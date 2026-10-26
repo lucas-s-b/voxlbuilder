@@ -548,7 +548,21 @@
       if (pr.when && !pr.when(res.atk, res.types)) return;
       const chance = pr.chance === undefined ? 1 : luckyChance(pr.chance, mods.lucky);
       let count = 0;
-      if (pr.on === "hit") count = res.hits * chance / (pr.every || 1);
+      if (pr.on === "hit" && pr.stacks) {
+        // stack-built bursts (Quarry): each hit adds a stack, and so does each Tempest tornado on a finisher hit;
+        // at `stacks` it fires, then no stacks are gained for `stackCd` seconds
+        const tornadoes = fin && p("tempest") ? finHits * (["Dual Guns", "Storm Caster"].includes(res.atk.form) ? 0.5 : 1) : 0;
+        const gained = res.hits + tornadoes;
+        if (track) {
+          const key = "stacks:" + pr.name;
+          const sk = track[key] || (track[key] = { n: 0, cd: -1 });
+          if (t >= sk.cd) {
+            sk.n += gained;
+            if (sk.n >= pr.stacks) { count = 1; sk.n = 0; sk.cd = t + (pr.stackCd || 0); }
+          }
+        } else count = gained / pr.stacks; // one use on its own: the share of a burst it builds
+        if (!count) return;
+      } else if (pr.on === "hit") count = res.hits * chance / (pr.every || 1);
       else if (pr.on === "attack") count = chance;
       else if (pr.on === "finisher") count = fin ? chance : 0;
       else if (pr.on === "finisherHit") {

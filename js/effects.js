@@ -517,7 +517,7 @@
   perk("dark-harvest", "Target ≤50% HP: Hex burst (20+20×amt), 2s cooldown", true, (E, a, S) => {
     if (S.targetHp <= 50) E.proc({ name: "Dark Harvest", on: "attack", when: NODOT, hits: [[20 + 20 * a, 1]], types: { Hex: 1 }, scalings: { Hex: 1 }, cooldown: 2 });
   }, ["targetHp"]);
-  perk("quarry", "Every 4 hits: Holy/Physical burst (20×amt)", true, (E, a) => E.proc({ name: "Quarry", on: "hit", every: 4, hits: [[20 * a, 1]], types: { Holy: 0.5, Physical: 0.5 }, scalings: { Holy: 1, Physical: 1 } }));
+  perk("quarry", "4 stacks (hits and Tempest tornadoes): Holy/Physical burst (20×amt), then 2.5s without stacks", true, (E, a) => E.proc({ name: "Quarry", on: "hit", stacks: 4, stackCd: 2.5, hits: [[20 * a, 1]], types: { Holy: 0.5, Physical: 0.5 }, scalings: { Holy: 1, Physical: 1 } }));
   perk("runic-blades", "Target marked by an art/rune: magic blade per hit (2+1.5×amt)", true, (E, a) => E.proc({ name: "Runic Blades", on: "hit", needsMark: 6.5 * a, hits: [[2 + 1.5 * a, 1]], types: { Magic: 1 }, scalings: { Magic: 1 }, cooldown: 0.075 }));
   perk("protector-spirit", "Above 50% HP: M1/M2 beam (0.4+0.1×amt)", true, (E, a, S) => {
     if (S.selfHp > 50 || a >= 2) E.proc({ name: "Protector Spirit", on: "attack", when: W, hits: [[0.4 + 0.1 * a, 1]], types: { Earth: 0.5, Magic: 0.5 }, scalings: { Earth: 0.5, Magic: 0.5 } });

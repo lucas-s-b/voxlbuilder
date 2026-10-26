@@ -267,6 +267,49 @@
   }
 
   // Extra stat/perk sources beyond equipment, fed into VoxlCalc.buildTotals.
+  // Draconic guild rune infusion (Draconic Blood / Draconic pages): a second rune key locked to a draconic ability.
+  // Rank 1 has Dragon Claw; the promotion quests unlock Dragon Infusion (rank 2) and Dragon Bubble (rank 3).
+  // Type and scaling follow your Dragon Blooded skin color; other races deal Physical.
+  const DRACONIC = {
+    colors: ["Fire", "Air", "Earth", "Water", "Holy", "Hex"],
+    skins: { Fire: "Red", Air: "White", Earth: "Green", Water: "Blue", Holy: "Yellow", Hex: "Purple" },
+    abilities: [
+      { id: "claw", name: "Dragon Claw", rank: 1, cooldown: 5, text: "(25 + 2.5 × Draconic Blood) damage, guardbreaks, 60 poise" },
+      { id: "infusion", name: "Dragon Infusion", rank: 2, cooldown: 35, text: "Draconic Infusion buff (0.1 × Draconic Blood) for 20s: all attacks +0.1 type of your color per 0.1 potency" },
+      { id: "bubble", name: "Dragon Bubble", rank: 3, cooldown: 7, text: "(20 + 2 × Draconic Blood) damage, 45 poise, detonates on contact" },
+    ],
+    // Claw / Bubble attack stats by color
+    attack: {
+      Fire: { speed: 1.2, text: "×1.2 speed, applies Burn for 5s" },
+      Air: { speed: 2, cd: 0.75, text: "×2 speed, ×2 knockback, ×0.75 cooldown" },
+      Earth: { dmg: 1.5, speed: 0.7, text: "×1.5 damage, ×1.5 stun, ×0.7 speed" },
+      Water: { dmg: 1.1, speed: 1.2, text: "×1.1 damage, ×1.2 speed, ×1.2 stun, heals and cleanses" },
+      Holy: { text: "Heals" },
+      Hex: { text: "×1.2 stun, Weakness (0.1 × Draconic Blood) for 10s plus 3 chances at a random debuff" },
+    },
+    // Dragon Infusion bonus by color
+    infusion: {
+      Air: "+10% attack speed and +20% knockback per 0.1 potency",
+      Fire: "Attacks always apply Burn; applied Burn potency +15% per Draconic Blood",
+      Hex: "Applied debuffs +5% potency and +15% duration per Draconic Blood",
+      Holy: "Healing +10% per 0.1 potency; applied buffs +5% potency per Draconic Blood",
+      Water: "Immune to debuffs; healing pulse every (8 − Draconic Blood)s",
+      Earth: "Poise damage +15% and stun resistance +0.15 per 0.1 potency",
+    },
+  };
+
+  // The build's draconic ability, color and damage type, or null without the Draconic guild.
+  function draconic(build) {
+    const g = build.guild;
+    if (!g || g.id !== "draconic") return null;
+    const rank = Math.max(1, Math.min(3, g.rank || 1));
+    const open = DRACONIC.abilities.filter((x) => x.rank <= rank);
+    const ability = open.find((x) => x.id === g.ability) || open[0];
+    const color = DRACONIC.colors.includes(g.color) ? g.color : "Fire";
+    const blooded = build.race === "dragon-blooded";
+    return { rank, open, ability, color, blooded, type: blooded ? color : "Physical" };
+  }
+
   function extraSources(build) {
     const out = [];
     const wpn = weapon(build);
@@ -280,6 +323,6 @@
 
   window.VoxlModel = {
     partById, artById, guildById, raceById, TIER_MULT, HYBRID_MULT, RACE_EFFECTS, WEAPON_TYPES,
-    MOVES, emptyWeapon, partsOf, weapon, weaponForm, guildRank, extraSources, ART_REQS, artMissing,
+    MOVES, emptyWeapon, partsOf, weapon, weaponForm, guildRank, extraSources, ART_REQS, artMissing, DRACONIC, draconic,
   };
 })();

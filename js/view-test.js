@@ -1,10 +1,10 @@
 // Test tab: damage simulator UI. Perk / status / potion toggles only appear when the build
 // (or a picked potion) actually provides them.
 (function () {
-  const SOURCE_COLORS = { m1: "#ffd84a", m2: "#fff6b0", proc: "#ff9a3c", art: "#4af6ff", rune: "#c49aff", special: "#7dff8a", custom: "#ff8ad8", dot: "#ff5a5a" };
-  const SOURCE_NAMES = { m1: "M1", m2: "M2", proc: "Procs & echoes", art: "Weapon Art", rune: "Rune", special: "Special", custom: "Custom", dot: "DoTs & auras" };
+  const SOURCE_COLORS = { m1: "#ffd84a", m2: "#fff6b0", proc: "#ff9a3c", art: "#4af6ff", rune: "#c49aff", drac: "#ff6a3d", special: "#7dff8a", custom: "#ff8ad8", dot: "#ff5a5a" };
+  const SOURCE_NAMES = { m1: "M1", m2: "M2", proc: "Procs & echoes", art: "Weapon Art", rune: "Rune", drac: "Draconic", special: "Special", custom: "Custom", dot: "DoTs & auras" };
   const FX = () => window.VoxlEffects;
-  const ATTACK_LABEL = { m1: "M1 COMBO", m2: "M2", art: "ART", rune: "RUNE", special: "SPECIAL", potion: "POTION", custom: "CUSTOM" };
+  const ATTACK_LABEL = { m1: "M1 COMBO", m2: "M2", art: "ART", rune: "RUNE", drac: "DRACONIC", special: "SPECIAL", potion: "POTION", custom: "CUSTOM" };
   const V = () => window.VoxlViews;
   const fmt = (n, d) => V().fmt(n, d);
   const pct = (n) => fmt(n * 100, 1) + "%";
@@ -79,6 +79,7 @@
       m2: [rot.m1.on ? "M2 after each combo" : "M2", ""],
       art: [byKey.art && byKey.art.cooldown && "Weapon art", byKey.art && sub(esc(byKey.art.name), `${byKey.art.cooldown}s cooldown`)],
       rune: [byKey.rune && byKey.rune.cooldown && "Rune", byKey.rune && sub(esc(byKey.rune.name), `${byKey.rune.cooldown}s cooldown`)],
+      drac: [byKey.drac && "Draconic rune", byKey.drac && sub(esc(byKey.drac.name), `${byKey.drac.cooldown}s cooldown`)],
       special: [byKey.special && "Special", byKey.special && sub(esc(byKey.special.name), spiritEnergy ? "fires at full energy" : ""), !spiritEnergy && cdInput("special")],
       custom: ["Custom attack", "", cdInput("custom")],
     };
@@ -99,9 +100,9 @@
     }).join("");
 
     // timing: how long each action locks you and how long its hits keep landing (base seconds at 1.0 speed)
-    const timingRows = ["m2", "art", "rune", "special", "custom"].filter((k) => has(k) && rot[k].on).map((k) => {
+    const timingRows = ["m2", "art", "rune", "drac", "special", "custom"].filter((k) => has(k) && rot[k].on).map((k) => {
       const tm = Dmg.timing(ctx, mods, s, byKey[k]);
-      const label = { m2: "M2", art: byKey.art && byKey.art.name, rune: byKey.rune && byKey.rune.name, special: byKey.special && byKey.special.name, custom: "Custom attack" }[k];
+      const label = { m2: "M2", art: byKey.art && byKey.art.name, rune: byKey.rune && byKey.rune.name, drac: byKey.drac && byKey.drac.name, special: byKey.special && byKey.special.name, custom: "Custom attack" }[k];
       const path = `timing.${tm.key}`;
       const eff = `${fmt(tm.cast, 2)}s${tm.active > tm.cast + 1e-6 ? ` · hits over ${fmt(tm.active, 2)}s` : ""}`;
       return `<div class="tim-row"><div class="rot-lab">${esc(label)}${tm.note ? `<i class="rot-name">${esc(tm.note)}</i>` : ""}</div>
@@ -216,11 +217,11 @@
           ${open ? head || "" : `<span class="sec-sum">${esc(summary || "")}</span>`}</div>
         ${open ? body : ""}</section>`;
     };
-    const ATTACK_NAMES = { m1: "M1 combo", m2: "M2", art: "Weapon art", rune: "Rune", special: "Special", potion: "Potion", custom: "Custom" };
+    const ATTACK_NAMES = { m1: "M1 combo", m2: "M2", art: "Weapon art", rune: "Rune", drac: "Draconic rune", special: "Special", potion: "Potion", custom: "Custom" };
     const onNames = (ids, name) => ids.filter(Boolean).map(name).join(", ");
     const statusOn = Object.keys(ctx.statuses).filter((id) => ctx.statuses[id].on).map((id) => ctx.statuses[id].def.name);
     const perksOn = owned.filter((pk) => (s.perkOn[pk.id] === undefined ? pk.def : !!s.perkOn[pk.id])).length;
-    const rotOn = shownKeys.filter((k) => rot[k].on).map((k) => (countMode ? `${rot[k].count}× ` : "") + (k === "art" && byKey.art ? byKey.art.name : k === "rune" && byKey.rune ? byKey.rune.name : ATTACK_NAMES[k]));
+    const rotOn = shownKeys.filter((k) => rot[k].on).map((k) => (countMode ? `${rot[k].count}× ` : "") + (["art", "rune", "drac"].includes(k) && byKey[k] ? byKey[k].name : ATTACK_NAMES[k]));
     const targetSum = Object.entries(s.target).filter(([, v]) => v).map(([k, v]) => `${k} ${v}%`).join(" · ") || "Dummy · no defenses";
 
     const prevSetup = A.$("viewTest").querySelector(".tv-setup");
@@ -235,6 +236,7 @@
               ${btn("attack", "m2", "M2", s.attack === "m2")}
               ${btn("attack", "art", "WEAPON ART", s.attack === "art", !has("art"))}
               ${btn("attack", "rune", "RUNE", s.attack === "rune", !has("rune"))}
+              ${has("drac") ? btn("attack", "drac", "DRACONIC", s.attack === "drac") : ""}
               ${has("special") ? btn("attack", "special", "SPECIAL", s.attack === "special") : ""}
               ${has("potion") ? btn("attack", "potion", "POTION", s.attack === "potion") : ""}
               ${btn("attack", "custom", "CUSTOM", s.attack === "custom")}
@@ -353,7 +355,7 @@
     const ticks = Dmg.ticks(ctx, mods, s, rage).map((x) => `<div class="step col"><span><b class="ename">${esc(x.name)}</b> ${fmt(x.perSecond, 2)} dmg/s</span>${typeChips(esc, x.byType)}</div>`).join("");
 
     const sus = Dmg.sustained(ctx, mods, s);
-    const ROT_NAMES = { m1: ["M1 combo", "M1 combos"], m2: ["M2", "M2s"], art: ["weapon art", "weapon arts"], rune: ["rune", "runes"], special: ["special", "specials"], custom: ["custom attack", "custom attacks"] };
+    const ROT_NAMES = { m1: ["M1 combo", "M1 combos"], m2: ["M2", "M2s"], art: ["weapon art", "weapon arts"], rune: ["rune", "runes"], drac: ["draconic rune", "draconic runes"], special: ["special", "specials"], custom: ["custom attack", "custom attacks"] };
     const used = Object.entries(sim.done).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${ROT_NAMES[k][n === 1 ? 0 : 1]}`).join(" · ");
     const runLine = sim.mode === "count"
       ? (used ? `Run: ${used} in ${fmt(sim.T, 2)}s${sim.capped ? " (stopped at the 600s limit)" : ""}` : "Tick at least one action with a count above 0 to start the run.")

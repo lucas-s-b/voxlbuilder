@@ -32,6 +32,12 @@ A build planner for the Roblox game **Voxlblade**, styled after the in-game inve
 - **Weapon art frame**: icons, only the arts your weapon can equip (Weapon Arts requirements, hybrid
   bonus excluded), damage per cast, cooldown, cast time and type split for the picked art
 - Click anything in the Character tab to pin its description (hover still previews)
+- **Draconic guild rune infusion** (Draconic Blood page): with the Draconic guild you pick the draconic rune on
+  its extra rune key (Dragon Claw at rank 1, Dragon Infusion from rank 2, Dragon Bubble at rank 3) and your Dragon
+  Blooded color. It's its own rotation action in the Test tab: Claw/Bubble damage of your color (Physical for other
+  races) with the color's attack stats, Dragon Infusion's buff windows adding your color's damage type to every
+  attack, and color effects on Burn, debuffs, healing, stun and poise. As a rune infusion it uses rune cooldown
+  effects and rune damage perks
 
 ### Perks, statuses and potions in the Test tab
 - ~180 damage-relevant perks are modeled from their wiki formulas (`js/effects.js`): damage boosts, type bonuses and

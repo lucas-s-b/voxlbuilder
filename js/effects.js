@@ -94,6 +94,9 @@
       p("sticky-guard") && ["Sticky Guard", 0.2 * p("sticky-guard")], p("shielding-gong") && ["Shielding Gong", 0.1 * p("shielding-gong")],
       p("blessing") && ["Blessing", 0.5], p("bastion-bless") && ["Bastion Bless", 0.5],
     ] },
+    { id: "draconic-infusion", name: "Draconic Infusion", side: "self", potency: true, sources: (ctx, p) => [
+      ctx.draconic && ctx.draconic.ability.id === "infusion" && p("draconic-blood") && ["Dragon Infusion", 0.1 * p("draconic-blood")],
+    ] },
     { id: "critical-boost", name: "Critical Boost", side: "self", sources: (ctx, p) => [
       p("royal-parry") && ["Royal Parry", 1], p("cursed-experiment") && ["Cursed Experiment", 1], ctx.build.race === "bunikin" && ["Bunikin dodge", 1],
     ] },
@@ -144,6 +147,7 @@
     { id: "weakened", name: "Weakened", side: "target", potency: true, sources: (ctx, p) => [
       rune(ctx, "weakening-roar-rune") && ["Weakening Roar Rune", 0.5], p("weakening") && ["Weakening", 0.2 * p("weakening")], p("woof-spirit") && ["Woof Spirit", 1],
       p("slayer-rage") && ["Slayer Rage", 0.5], p("iron-slayer-spirit") && ["Iron Slayer Spirit", 0.2], ctx.build.race === "dark-elf" && ["Dark Elf", 0.5],
+      ctx.draconic && ctx.draconic.blooded && ctx.draconic.color === "Hex" && ctx.draconic.ability.id !== "infusion" && p("draconic-blood") && [`${ctx.draconic.ability.name} (Hex)`, 0.1 * p("draconic-blood")],
       p("void-root-spirit") && ["Void Root Spirit", 0.5], p("wild-bolt") && ["Wild Bolt", 0.5],
     ] },
   ];
@@ -151,7 +155,7 @@
   // Sources that can keep each DoT on the target.
   const DOT_SOURCES = {
     Burn: ["ignition", "dragon-breath", "bellowing-ember", "echo-incineration", "exhaust", "fiery-pursuit", "heat-drill", "sunburn", "pyre-bloom",
-      "wild-bolt", "void-root-spirit", "dragigator-spirit", "draconic-blood", "solar-light", "propelling-fun", "cursed-bark"],
+      "wild-bolt", "void-root-spirit", "dragigator-spirit", "solar-light", "propelling-fun", "cursed-bark"],
     Bleed: ["vicious-edge", "serrated-edge", "penance", "phalanx-stab", "sharp-claws", "splinter", "gorecast", "gelid-lance", "whirlwind",
       "ichor-spark", "thorns", "ice-burst", "caci-spirit", "gremlin-spirit", "winter-woof-spirit", "saw-stance", "saw-heart", "wild-bolt", "void-root-spirit", "cursed-bark"],
     Poison: ["poisonous", "venom-spitter", "fungal-prototype", "gaseous-smash", "toxin-transfer", "toxin-caster", "proto-tech", "spore-burst",
@@ -363,13 +367,19 @@
     const add = 0.2 * (1 + ((ctx.stats["Earth Boost"] || 0) + (ctx.stats["Air Boost"] || 0)) / 100 * a);
     E.dot("Bleed", { addType: { Air: add / 2, Earth: add / 2 }, addScal: { Air: 0.5, Earth: 0.5 } });
   });
-  perk("draconic-runes", "Runes +0.05/amt type of your draconic color", true, (E, a, S, ctx) => {
+  perk("draconic-runes", "Runes (and your draconic rune) +0.05/amt type of your draconic color", true, (E, a, S, ctx) => {
     E.addType("Draconic Runes", ctx.build.race === "dragon-blooded" ? S.element : "Physical", 0.05 * a, (atk) => atk.kind === "rune");
-  }, ["element"]);
-  perk("draconic-blood", "Draconic Infusion: +0.1/amt type of your draconic color", false, (E, a, S, ctx) => {
-    E.addType("Draconic Infusion", ctx.build.race === "dragon-blooded" ? S.element : "Physical", 0.1 * a, NODOT);
-    if (ctx.build.race === "dragon-blooded" && S.element === "Air") E.atkSpeed("Draconic Infusion (Air)", 100 * a, ALL);
-  }, ["element"]);
+  });
+  perk("draconic-blood", "Draconic rune infusion; Dragon Infusion adds your color's type (+0.1 per 0.1 potency) to attacks", true, (E, a, S, ctx) => {
+    const d = ctx.draconic;
+    if (!d || d.ability.id !== "infusion") return;
+    const st = ctx.statuses["draconic-infusion"];
+    const pot = st && st.potency !== null ? st.potency : 0.1 * a;
+    // the Draconic Infusion toggle for single hits; in the timeline only inside the buff windows
+    const up = (atk) => atk.kind !== "dot" && (atk.dracInf !== undefined ? atk.dracInf : !!S.self["draconic-infusion"]);
+    E.addType("Draconic Infusion", d.type, pot, up);
+    if (d.blooded && d.color === "Air") E.atkSpeed("Draconic Infusion (Air)", 100 * pot, up);
+  });
   perk("rejuvenating-flame", "Cinder Surge: +(0.025+0.025×amt) Fire type", false, (E, a) => E.addType("Cinder Surge", "Fire", 0.025 + 0.025 * a, NODOT));
 
   // ---- weapon attack (M1/M2) modifiers

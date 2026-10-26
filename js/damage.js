@@ -25,10 +25,10 @@
     dots: { Burn: { on: false, potency: 0 }, Bleed: { on: false, potency: 0 }, Poison: { on: false, potency: 0 } },
     // rotation: "time" = everything enabled on cooldown for `duration` seconds; "count" = each enabled action `count` times
     rotMode: "time", duration: 30, spiritMax: 100,
-    rotOrder: ["rune", "art", "special", "custom", "m1"], // priority, top first; "m1" = the M1 combo (+ its M2)
+    rotOrder: ["rune", "drac", "art", "special", "custom", "m1"], // priority, top first; "m1" = the M1 combo (+ its M2)
     timing: {}, // per action {cast, active} overrides, e.g. "art:starstream"
     rot: {
-      m1: { on: true, count: 5 }, m2: { on: false, count: 2 }, art: { on: true, count: 3 }, rune: { on: true, count: 1 },
+      m1: { on: true, count: 5 }, m2: { on: false, count: 2 }, art: { on: true, count: 3 }, rune: { on: true, count: 1 }, drac: { on: true, count: 1 },
       special: { on: false, count: 3, cooldown: 0 }, custom: { on: false, count: 3, cooldown: 0 },
     },
     potions: {}, status: {}, perkOn: {}, sit: {},
@@ -49,7 +49,7 @@
     const rune = runeSlot && window.VOXL_DATA.items.find((i) => i.id === runeSlot.id);
     const form = M.weaponForm(build, perks);
     const potions = new Set(Object.keys(s.potions || {}).filter((k) => s.potions[k]));
-    const ctx = { build, stats: totals.stats, perks, race, wpn, rune, form, potions, level: build.level || 80 };
+    const ctx = { build, stats: totals.stats, perks, race, wpn, rune, form, potions, level: build.level || 80, draconic: M.draconic(build) };
     ctx.potionMult = 1 + 0.2 * (perks["potion-chugger"] || 0);
     ctx.statuses = resolveStatuses(ctx, s);
     ctx.dotSources = dotSources(ctx);
@@ -88,6 +88,8 @@
       if (ctx.build.race === "dark-elf") list.push("Dark Elf");
       if (k === "Poison" && ctx.potions.has("throwable-poison-potion")) list.push("Throwable Poison Potion");
       if (k === "Poison" && ctx.form.m1 === "Virulent Core") list.push("Virulent Core");
+      const d = ctx.draconic;
+      if (k === "Burn" && d && d.blooded && d.color === "Fire" && ctx.perks["draconic-blood"]) list.push(d.ability.name + " (Fire)");
       out[k] = list;
     });
     return out;
@@ -108,13 +110,18 @@
     const st = ctx.statuses;
     const on = (id) => st[id] && st[id].on;
     const self = {};
-    ["tailwind", "bounce", "inspired", "reinforce", "critical-boost", "regen", "self-poison", "self-burn", "self-bleed", "self-slow"].forEach((id) => { self[id] = !!on(id); });
+    ["tailwind", "bounce", "inspired", "reinforce", "critical-boost", "regen", "self-poison", "self-burn", "self-bleed", "self-slow", "draconic-infusion"].forEach((id) => { self[id] = !!on(id); });
+    if (ctx.draconic) sit.element = ctx.draconic.color; // Draconic color is picked with the guild in the Character tab
     const pots = potencyPerks(ctx);
     // Darkening Hex: Hex hits reach its 10-activation cap quickly; each adds then multiplies your debuffs' potency.
     const dh = ctx.perks["darkening-hex"] || 0;
     const hexHits = dh && [ctx.wpn.types, ctx.wpn.art && ctx.wpn.art.types, ctx.rune && ctx.rune.attack && ctx.rune.attack.types].some((t) => t && t.Hex > 0);
     const darken = (v, mult) => { if (!hexHits) return v; for (let i = 0; i < 10; i++) v = (v + 0.005 * dh) * (mult ? 1 + 0.05 * dh : 1); return v; };
     const applied = Object.fromEntries(Object.keys(DOTS).map((k) => [k, darken((+s.dots[k].potency || 0) + 0.1 * pots[k], true)]));
+    // Dragon Infusion (Fire): applied Burn potency +15% per Draconic Blood; (Hex): applied debuffs +5% potency per Draconic Blood
+    const dInf = ctx.draconic && ctx.draconic.blooded && ctx.draconic.ability.id === "infusion" && on("draconic-infusion") ? ctx.perks["draconic-blood"] || 0 : 0;
+    if (dInf && ctx.draconic.color === "Fire") applied.Burn *= 1 + 0.15 * dInf;
+    if (dInf && ctx.draconic.color === "Hex") Object.keys(applied).forEach((k) => { applied[k] *= 1 + 0.05 * dInf; });
     const target = {
       Bleed: ctx.dotSources.Bleed.length > 0 && s.dots.Bleed.on,
       Burn: ctx.dotSources.Burn.length > 0 && s.dots.Burn.on,
@@ -653,6 +660,8 @@
       const r = applyOverrides(mods, { key: "rune", kind: "rune", runeId: ctx.rune.id, name: ctx.rune.name, hits: ra && ra.hits, types: ra && ra.types, scalings: (ra && ra.scalings) || {}, cooldownBase: ctx.rune.cooldown, applies: ra && ra.applies });
       list.push({ ...r, overridden: true, cooldown: runeCooldown(ctx, mods) });
     }
+    const drac = draconicAttack(ctx, mods);
+    if (drac) list.push(drac);
     // SPECIAL: monk spirits and attacks added by perks (Wind Drill, Pulverizing Rush)
     const specials = [];
     Object.keys(FX.SPIRITS).filter((id) => ctx.perks[id]).forEach((id) => {
@@ -667,6 +676,25 @@
     if (ctx.potions.has("throwable-damage-potion")) list.push({ key: "potion", kind: "potion", name: "Throwable Damage Potion", hits: [[12, 1]], types: { Physical: 1 }, scalings: {} });
     list.push({ key: "custom", kind: "custom", name: "Custom attack", hits: [[+s.customBase || 0, +s.customHits || 1]], types: null, scalings: null, weaponTypes: true });
     return list;
+  }
+
+  // Draconic guild rune infusion: Dragon Claw / Dragon Bubble hit; Dragon Infusion is a 20s buff (Draconic Blood page).
+  // It sits in the rune infusion slot, so rune cooldown effects and rune damage perks apply to it.
+  function draconicAttack(ctx, mods) {
+    const d = ctx.draconic, a = perk(ctx, "draconic-blood");
+    if (!d || !a) return null;
+    const cs = d.blooded ? M.DRACONIC.attack[d.color] || {} : {};
+    const id = d.ability.id;
+    const baseCd = d.ability.cooldown * (id === "infusion" ? 1 : cs.cd || 1);
+    const cooldown = cdFloor((baseCd * (ctx.race.runeCdMult || 1) * mods.cd.rune.mult) / (1 + mods.cd.rune.speed));
+    const common = { key: "drac", kind: "rune", runeId: "draconic-" + id, draconic: id, name: d.ability.name, cooldownBase: baseCd, cooldown };
+    if (id === "infusion") {
+      const potency = 0.1 * a;
+      return { ...common, hits: null, applies: [{ status: "Draconic Infusion", potency }], buff: { potency, duration: 20 * (1 + 0.33 * perk(ctx, "contained")) } };
+    }
+    const base = (id === "bubble" ? 20 + 2 * a : 25 + 2.5 * a) * (cs.dmg || 1);
+    const atk = applyOverrides(mods, { ...common, hits: [[base, 1]], types: { [d.type]: 1 }, scalings: { [d.type]: 1 }, poise: id === "bubble" ? 45 : 60, guardbreak: id === "claw" });
+    return { ...atk, overridden: true, cooldown };
   }
 
   // ------------------------------------------------------------ action timing
@@ -691,6 +719,7 @@
   function timingKey(atk) {
     if (atk.kind === "art") return "art:" + atk.artId;
     if (atk.key === "rune") return "rune:" + atk.runeId;
+    if (atk.key === "drac") return "drac:" + atk.draconic;
     if (atk.key === "special") return "special:" + atk.specialId;
     return atk.key;
   }
@@ -709,7 +738,7 @@
     const over = (s.timing || {})[key] || {};
     let def, speed;
     if (atk.kind === "art") { def = ART_TIMING[atk.artId] || { cast: 1, active: 1 }; speed = artSpeed(ctx, mods, s, atk); }
-    else if (atk.key === "rune") { def = { cast: 0.5, active: 0.5 }; speed = 1; }
+    else if (atk.key === "rune" || atk.key === "drac") { def = { cast: 0.5, active: 0.5 }; speed = 1; }
     else { def = { cast: +s.swingTime || 0.5, active: +s.swingTime || 0.5 }; speed = as.mult; }
     const baseCast = over.cast > 0 ? +over.cast : def.cast;
     const baseActive = Math.max(baseCast, over.active > 0 ? +over.active : Math.max(def.active, baseCast));
@@ -740,14 +769,20 @@
     return (spiritCoeff * coeff * amt) / attackSpeed(ctx, mods, s).mult;
   }
 
-  const ROT_KEYS = ["m1", "m2", "art", "rune", "special", "custom"];
-  const COOLDOWN_KEYS = ["rune", "art", "special", "custom"];
-  const ORDER_KEYS = ["rune", "art", "special", "custom", "m1"];
+  const ROT_KEYS = ["m1", "m2", "art", "rune", "drac", "special", "custom"];
+  const COOLDOWN_KEYS = ["rune", "drac", "art", "special", "custom"];
+  const ORDER_KEYS = ["rune", "drac", "art", "special", "custom", "m1"];
 
-  // Priority list: valid keys from the settings, anything missing appended in the default order.
+  // Priority list: valid keys from the settings; a missing key (e.g. one added in a later version) goes right after
+  // the key it follows in the default order.
   function rotOrder(s) {
     const got = (Array.isArray(s.rotOrder) ? s.rotOrder : []).filter((k, i, l) => ORDER_KEYS.includes(k) && l.indexOf(k) === i);
-    return got.concat(ORDER_KEYS.filter((k) => !got.includes(k)));
+    ORDER_KEYS.forEach((k, i) => {
+      if (got.includes(k)) return;
+      const prev = ORDER_KEYS.slice(0, i).reverse().find((x) => got.includes(x));
+      got.splice(prev ? got.indexOf(prev) + 1 : 0, 0, k);
+    });
+    return got;
   }
   const COUNT_LIMIT = 600; // seconds; a count-mode run never goes past this
 
@@ -772,22 +807,22 @@
     const rot = rotation(s);
     const atks = attacks(ctx, mods, s);
     const find = (k) => atks.find((a) => a.key === k);
-    const A = { m1: find("m1"), m2: find("m2"), art: find("art"), rune: find("rune"), special: find("special"), custom: find("custom") };
+    const A = { m1: find("m1"), m2: find("m2"), art: find("art"), rune: find("rune"), drac: find("drac"), special: find("special"), custom: find("custom") };
     // a monk spirit is released by energy, not a cooldown
     const spiritGated = !!(A.special && A.special.spiritId && perk(ctx, "spirit-commune"));
     const energyMax = Math.max(1, +s.spiritMax || 100);
     const cd = {
-      art: A.art && A.art.cooldown, rune: A.rune && A.rune.cooldown,
+      art: A.art && A.art.cooldown, rune: A.rune && A.rune.cooldown, drac: A.drac && A.drac.cooldown,
       special: spiritGated ? 0 : Math.max(0, +rot.special.cooldown || 0), custom: Math.max(0, +rot.custom.cooldown || 0),
     };
-    const usable = (k) => rot[k].on && A[k] && (k === "m1" ? A.m1.swings.length > 0 : k === "art" || k === "rune" ? cd[k] > 0 : true);
+    const usable = (k) => rot[k].on && A[k] && (k === "m1" ? A.m1.swings.length > 0 : k === "art" || k === "rune" || k === "drac" ? cd[k] > 0 : true);
     const left = Object.fromEntries(ROT_KEYS.map((k) => [k, !usable(k) ? 0 : countMode ? Math.max(0, Math.round(+rot[k].count || 0)) : Infinity]));
     const done = Object.fromEntries(ROT_KEYS.map((k) => [k, 0]));
-    const ready = { art: 0, rune: 0, special: 0, custom: 0 };
+    const ready = { art: 0, rune: 0, drac: 0, special: 0, custom: 0 };
     const order = rotOrder(s);
     const m1Rank = order.indexOf("m1");
     const as = attackSpeed(ctx, mods, s);
-    const tim = Object.fromEntries(["m2", "art", "rune", "special", "custom"].filter((k) => A[k]).map((k) => [k, timing(ctx, mods, s, A[k])]));
+    const tim = Object.fromEntries(["m2", "art", "rune", "drac", "special", "custom"].filter((k) => A[k]).map((k) => [k, timing(ctx, mods, s, A[k])]));
     tim.m1 = timing(ctx, mods, s, A.m1);
     const rr = runeRage(ctx);
     const markLen = Math.max(0, ...mods.procs.filter((p) => p.needsMark).map((p) => p.needsMark));
@@ -811,6 +846,9 @@
     };
     const track = {};
     const rageWindows = [];
+    const infWindows = []; // Dragon Infusion buff windows
+    const dracInfusion = A.drac && A.drac.draconic === "infusion";
+    const infUp = (x) => infWindows.some(([a, b]) => x >= a && x < b);
     const hitsBy = Object.fromEntries(ROT_KEYS.concat("proc").map((k) => [k, 0]));
     const casts = [];
     let markEnd = -1, charges = 0, swing = 0, m2Due = false, t = 0, energy = 0, beenades = 0, lastHit = 0;
@@ -819,6 +857,7 @@
     const st = (x) => ({ rage: ragePotency(ctx, runeUp(x), true), marked: x < markEnd, time: x, charges, windows, interval: as.swingTime });
     const use = (x, atk, key, span) => {
       const state = st(x);
+      if (dracInfusion) atk = { ...atk, dracInf: infUp(x) }; // in the timeline the buff only counts inside its windows
       if (atk.hits && atk.hits.length) {
         const r = hit(ctx, mods, s, atk, state);
         const e = emit(x, key, r.expected, r.expByType, span);
@@ -861,6 +900,7 @@
         beenades = 0;
       }
       if (pick === "rune" && rr) rageWindows.push([t, t + rr.duration]);
+      if (pick === "drac" && atk.buff) infWindows.push([t, t + atk.buff.duration]);
       const r = use(t, atk, pick, tm.active > tm.cast + 1e-9 ? tm.active : 0);
       if ((pick === "art" || pick === "rune") && markLen && atk.hits && atk.hits.length) markEnd = t + markLen;
       if (pick === "art") {
@@ -887,7 +927,7 @@
     }
     const capped = countMode && t >= COUNT_LIMIT;
     const T = countMode ? Math.min(COUNT_LIMIT, Math.max(t, lastHit)) : end;
-    const keys = ["m1", "m2", "proc", "art", "rune", "special", "custom", "dot"];
+    const keys = ["m1", "m2", "proc", "art", "rune", "drac", "special", "custom", "dot"];
     const bins = Array.from({ length: Math.max(1, Math.ceil(T - 1e-9)) }, () => Object.fromEntries(keys.map((k) => [k, 0])));
     events.forEach(([x, k, v]) => { bins[Math.min(bins.length - 1, Math.floor(x))][k] += v; });
     // DoTs and auras tick for the whole run; the last second only counts the part that was fought
@@ -911,7 +951,7 @@
     return {
       T: round(T), mode: countMode ? "count" : "time", bins, perSec, total: fightTotal, avg: T > 0 ? fightTotal / T : 0, peak: Math.max(...perSec),
       bySource, typeTotals, log, attackSpeed: as, done, capped, cooldowns: cd, timing: tim, casts, hitsBy, dotTotal,
-      direct: fightTotal - bySource.dot, spiritGated, energyMax,
+      direct: fightTotal - bySource.dot, spiritGated, energyMax, infUptime: Math.min(1, infWindows.reduce((q, [a, b]) => q + Math.max(0, Math.min(b, T) - a), 0) / Math.max(1e-6, T)),
     };
   }
 
@@ -936,6 +976,6 @@
   window.VoxlDamage = {
     DMG_TYPES, DOTS, defaults, context, collect, attacks, hit, procsFor, dot, ticks, attackSpeed,
     simulate, sustained, ragePotency, runeRage, swingPattern, rotation, rotOrder, ROT_KEYS, potencyMult, artCooldown, runeCooldown,
-    artAttack, timing, ART_TIMING, spiritGain, SPIRIT_COEFF, armorMult,
+    artAttack, timing, ART_TIMING, spiritGain, SPIRIT_COEFF, armorMult, draconicAttack,
   };
 })();

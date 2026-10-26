@@ -60,6 +60,13 @@
     const rows = { defense: [], healing: [], summons: [], poise: [], utility: [] };
     const row = (group, id, text, value) => { if (p(id)) rows[group].push({ id, name: (window.VOXL_DATA.perks[id] || { name: id }).name, amt: p(id), text, value }); };
     const reinforce = ctx.statuses.reinforce && ctx.statuses.reinforce.on ? ctx.statuses.reinforce.potency || 0 : 0;
+    // Draconic rune infusion (Draconic Blood page): Dragon Infusion buff share of the fight and its potency
+    const drc = ctx.draconic && p("draconic-blood") ? ctx.draconic : null;
+    const blood = p("draconic-blood");
+    const infSt = ctx.statuses["draconic-infusion"];
+    const infPot = drc && drc.ability.id === "infusion" ? (infSt && infSt.potency !== null ? infSt.potency : 0.1 * blood) : 0;
+    const infUp = infPot ? Math.max(sim.infUptime || 0, S.self["draconic-infusion"] ? 1 : 0) : 0;
+    const infColor = drc && drc.blooded && infUp ? drc.color : null;
     const artTime = (sim.casts || []).filter((c) => c.key === "art");
 
     // ---------------------------------------------------------------- DEFENSE (one incoming attack)
@@ -68,7 +75,7 @@
     const attacks10 = Math.max(0, +inc.per10 || 0);
     const hitsPerSec = attacks10 / 10;
     const tenacity = st.Tenacity || 0;
-    const stunRes = tenacity + 0.2 * p("colossus") + (p("lithic-veil") ? 0.4 * p("lithic-veil") : 0);
+    const stunRes = tenacity + 0.2 * p("colossus") + (p("lithic-veil") ? 0.4 * p("lithic-veil") : 0) + (infColor === "Earth" ? 1.5 * infPot * infUp : 0);
     const stunAfter = Math.max(0, inc.stun - stunRes);
     const bulwarkOn = p("bulwark") && inc.stun > 0 && inc.stun - tenacity <= 0.2 * p("bulwark") + 1e-9;
     let defBonus = 0;
@@ -167,7 +174,8 @@
     const scal = (sc) => 1 + Object.entries(sc).reduce((a, [k, v]) => a + v * b(k), 0);
     const critP = p("critical-healing") ? Math.min(1, (20 + (st["Holy Boost"] || 0) / 5) / 100) : 0;
     const critBonus = 0.35 + 0.1665 * p("critical-healing");
-    const healMult = (1 + 0.1 * p("heal-boost") + (p("holy-tides") ? 0.001 * ((st["Water Boost"] || 0) + (st["Holy Boost"] || 0)) * p("holy-tides") : 0)) * (1 + critP * critBonus);
+    const healMult = (1 + 0.1 * p("heal-boost") + (p("holy-tides") ? 0.001 * ((st["Water Boost"] || 0) + (st["Holy Boost"] || 0)) * p("holy-tides") : 0)) * (1 + critP * critBonus) *
+      (infColor === "Holy" ? 1 + infPot * infUp : 1); // Dragon Infusion (Holy): +10% healing per 0.1 potency
     const heal = (base, sc, noLevel) => base * scal(sc || {}) * (noLevel ? 1 : lvlMult) * healMult;
     const hs = []; // [name, HP per second, note]
     const directHits = sim.hitsBy ? Object.entries(sim.hitsBy).filter(([k]) => k !== "proc").reduce((a, [, v]) => a + v, 0) : 0;
@@ -200,6 +208,12 @@
     if (p("undying-rot") && S.self["self-poison"]) hs.push(["Undying Rot", (0.2 + 0 / 7.5) * p("undying-rot") * healMult, "per tick while poisoned (unaffected by level)"]);
     const regen = ctx.statuses.regen && ctx.statuses.regen.on;
     if (regen) { const pot = p("holy-tides") ? 0.5 * p("holy-tides") : 1; hs.push(["Regen", heal(pot, { Water: 1, Holy: 1 }), `potency ${pot}`]); }
+    if (drc && drc.blooded && drc.ability.id !== "infusion" && (drc.color === "Holy" || drc.color === "Water") && sim.done && sim.done.drac) {
+      const claw = drc.ability.id === "claw";
+      const base = drc.color === "Holy" ? (claw ? 5 + 0.5 * blood : 4 + 0.4 * blood) : (claw ? 1.923 + 0.1923 * blood : 1.538 + 0.1538 * blood);
+      hs.push([`${drc.ability.name} (${drc.color})`, (sim.done.drac * heal(base, { [drc.color]: 1 })) / T, `${heal(base, { [drc.color]: 1 }).toFixed(2)} per use`]);
+    }
+    if (infColor === "Water") hs.push(["Dragon Infusion pulses (Water)", (heal(0.1, { Water: 1 }) / Math.max(1, 8 - blood)) * infUp, `every ${Math.max(1, 8 - blood)}s while infused`]);
     const healing = { list: hs, total: hs.reduce((a, [, v]) => a + v, 0), mult: healMult, critP, critBonus, lvlMult, maxHp };
     row("healing", "heal-boost", `Healing +${10 * p("heal-boost")}%`);
     row("healing", "lifesteal", `Heal ${(0.25 * p("lifesteal")).toFixed(2)}% of hit damage + 0.1 per hit (not DoTs)`);
@@ -248,7 +262,8 @@
     row("summons", "bumblz-spirit", "Summoning at full energy summons 4 more");
 
     // ---------------------------------------------------------------- POISE / UTILITY
-    const poiseMult = (1 + 0.166 * tenacity * p("concussion")) * (1 + 0.2 * p("colossus")) * (p("dominating") && S.target.taunted ? 1 + 0.33 * p("dominating") : 1);
+    const poiseMult = (1 + 0.166 * tenacity * p("concussion")) * (1 + 0.2 * p("colossus")) * (p("dominating") && S.target.taunted ? 1 + 0.33 * p("dominating") : 1) *
+      (infColor === "Earth" ? 1 + 1.5 * infPot * infUp : 1); // Dragon Infusion (Earth): +15% poise damage per 0.1 potency
     const poise = { mult: poiseMult, stunMult: 1 + 0.1 * tenacity * p("concussion"), stunFlat: 0.2 * tenacity * p("concussion"), parry: 40 * (p("parry") + p("buckler")) };
     row("poise", "concussion", `Poise damage +${(16.6 * tenacity * p("concussion")).toFixed(1)}%, stun +${(10 * tenacity * p("concussion")).toFixed(1)}% +${poise.stunFlat.toFixed(2)}s (tenacity ${tenacity})`);
     row("poise", "dominating", `+${33 * p("dominating")}% poise damage vs Taunted${S.target.taunted ? "" : " (target not Taunted)"}`);
@@ -261,6 +276,11 @@
     row("utility", "wildfire", `DoTs hit every enemy in range (${S.enemies} set in Situation)`);
     row("utility", "darkening-hex", S.darkHex ? "Hex hits raise your debuff potency (10 activations, applied to DoTs, Shatter, Rend, Slow)" : "Needs Hex damage on your weapon, art or rune");
     row("utility", "bomber-satchel", "Art hits store 5 Beenades for the next Beenade Rune");
+    if (drc) {
+      const DR = window.VoxlModel.DRACONIC;
+      const colorText = !drc.blooded ? "not Dragon Blooded: Physical, no color bonus" : drc.ability.id === "infusion" ? DR.infusion[drc.color] : DR.attack[drc.color].text;
+      row("utility", "draconic-blood", `${drc.ability.name} (${drc.type}) on its own rune key${drc.ability.id === "infusion" ? `, Draconic Infusion ${infPot.toFixed(2)} up ${Math.round(infUp * 100)}% of the fight` : `, ${drc.ability.id === "bubble" ? 45 : 60} poise per hit`} · ${colorText}`);
+    }
     row("utility", "spirit-commune", sim.spiritGated ? `Spirit released at ${sim.energyMax} energy (timeline)` : "Builds energy for monk spirits");
 
     return { defense, healing, summons, poise, rows, inc };

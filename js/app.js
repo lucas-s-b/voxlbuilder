@@ -102,6 +102,11 @@
     });
     out.race = M.raceById[b.race] ? b.race : null;
     out.guild = b.guild && M.guildById[b.guild.id] ? { id: b.guild.id, rank: clamp(b.guild.rank | 0 || 1, 1, 3) } : null;
+    if (out.guild && out.guild.id === "draconic") {
+      // draconic rune infusion choice and Dragon Blooded color
+      if (M.DRACONIC.abilities.some((x) => x.id === b.guild.ability)) out.guild.ability = b.guild.ability;
+      if (M.DRACONIC.colors.includes(b.guild.color)) out.guild.color = b.guild.color;
+    }
     const w = b.weapon || {};
     const part = (id, kind) => (M.partById[id] && M.partById[id].kind === kind ? id : null);
     out.weapon = {
@@ -134,7 +139,7 @@
       return [k, r];
     }));
     if (typeof t.spirit === "string") out.spirit = t.spirit;
-    if (!["m1", "m2", "art", "rune", "special", "potion", "custom"].includes(out.attack)) out.attack = "m1";
+    if (!["m1", "m2", "art", "rune", "drac", "special", "potion", "custom"].includes(out.attack)) out.attack = "m1";
     if (!["avg", "always", "never"].includes(out.crit)) out.crit = "avg";
     Object.keys(d.target).forEach((k) => { if (t.target && typeof t.target[k] === "number") out.target[k] = t.target[k]; });
     Object.keys(d.dots).forEach((k) => {

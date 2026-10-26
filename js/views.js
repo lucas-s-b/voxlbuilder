@@ -54,6 +54,19 @@
       D.guilds.map((g) => `
       <button class="pick${b.guild && b.guild.id === g.id ? " on" : ""}" data-guild="${esc(g.id)}" data-ent="guild:${esc(g.id)}">
         ${g.image ? img(g.image, g.name) : ""}<span class="pick-name outline">${esc(g.name)}</span></button>`).join("");
+    // Draconic guild: pick the draconic rune (extra rune key) and your Dragon Blooded color
+    const dr = M.draconic(b);
+    const DR = M.DRACONIC;
+    const dracBlock = dr ? `<div class="drac-box">
+        <div class="sub-h outline">DRACONIC RUNE · EXTRA RUNE KEY</div>
+        <div class="mode-tabs wrap">${DR.abilities.map((x) => `<button class="mode-tab outline${dr.ability.id === x.id ? " active" : ""}" data-drac-ability="${x.id}"${x.rank > dr.rank ? ` disabled title="Unlocked at rank ${x.rank}"` : ""}>${esc(x.name.toUpperCase())}${x.rank > dr.rank ? ` · R${x.rank}` : ""}</button>`).join("")}</div>
+        <div class="cv-note"><b class="outline">${esc(dr.ability.name)}:</b> ${esc(dr.ability.text)} · ${dr.ability.cooldown}s cooldown</div>
+        <div class="sub-h outline">DRAGON BLOODED COLOR</div>
+        <div class="mode-tabs wrap">${DR.colors.map((c) => `<button class="mode-tab outline${dr.color === c ? " active" : ""}" data-drac-color="${c}" style="color:${TYPE_COLORS[c]}">${DR.skins[c].toUpperCase()}</button>`).join("")}</div>
+        <div class="cv-note">${dr.blooded
+          ? `<b class="outline">${esc(dr.color)}:</b> ${esc(dr.ability.id === "infusion" ? DR.infusion[dr.color] : DR.attack[dr.color].text)}`
+          : "Not Dragon Blooded: draconic abilities deal Physical damage and get no color bonus."}</div>
+      </div>` : "";
     const ranks = b.guild ? [1, 2, 3].map((r) =>
       `<button class="mode-tab outline${b.guild.rank === r ? " active" : ""}" data-rank="${r}">RANK ${r}</button>`).join("") : "";
 
@@ -126,6 +139,7 @@
             <div class="cv-head"><h3 class="outline">GUILD</h3><div class="mode-tabs">${ranks}</div></div>
             <div class="pick-grid">${guildTiles}</div>
             <div class="cv-note">${gr ? `<b class="outline" style="color:#6dff9a">${esc(gr.guild.name)} rank ${gr.rank}:</b> ${esc(gr.guild.desc)}` : "Pick a guild and rank. Its stats and perks are added to your build."}</div>
+            ${dracBlock}
           </section>
           <section class="cv-sec">
             <div class="cv-head"><h3 class="outline">WEAPON ART</h3><span class="cv-sub outline">${allowed.length} OF ${D.arts.length} AVAILABLE</span></div>
@@ -204,6 +218,8 @@
         return A.commit();
       }
       if ((el = t("[data-rank]"))) { b.guild.rank = +el.dataset.rank; return A.commit(); }
+      if ((el = t("[data-drac-ability]")) && !el.disabled) { b.guild.ability = el.dataset.dracAbility; return A.commit(); }
+      if ((el = t("[data-drac-color]"))) { b.guild.color = el.dataset.dracColor; return A.commit(); }
       if ((el = t("[data-wmode]"))) { b.weapon.mode = el.dataset.wmode; A.ui.partKind = partKinds(b.weapon.mode)[0]; return A.commit(); }
       if ((el = t("[data-pk]"))) { A.ui.partKind = el.dataset.pk; A.ui.partSearch = ""; return renderChar(A); }
       if ((el = t("[data-part]"))) {

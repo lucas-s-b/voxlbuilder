@@ -110,7 +110,7 @@
     const st = ctx.statuses;
     const on = (id) => st[id] && st[id].on;
     const self = {};
-    ["tailwind", "bounce", "inspired", "reinforce", "critical-boost", "regen", "self-poison", "self-burn", "self-bleed", "self-slow", "draconic-infusion"].forEach((id) => { self[id] = !!on(id); });
+    ["tailwind", "bounce", "inspired", "reinforce", "critical-boost", "regen", "self-poison", "self-burn", "self-bleed", "self-slow", "draconic-infusion", "lightning-cloak"].forEach((id) => { self[id] = !!on(id); });
     if (ctx.draconic) sit.element = ctx.draconic.color; // Draconic color is picked with the guild in the Character tab
     const pots = potencyPerks(ctx);
     // Darkening Hex: Hex hits reach its 10-activation cap quickly; each adds then multiplies your debuffs' potency.
@@ -138,7 +138,7 @@
       rend: on("electrical-rend") ? darken(st["electrical-rend"].potency, false) : 0,
       hypno: on("hypnotized") ? st.hypnotized.potency : 0,
       slowPotency: on("slowed") ? darken(st.slowed.potency, true) : 0, darkHex: !!hexHits,
-      tailwindPotency: on("tailwind") ? st.tailwind.potency + 0.1 * (ctx.perks.tailwind || 0) : 0,
+      tailwindPotency: on("tailwind") ? st.tailwind.potency : 0, // already includes the Tailwind perk's +0.1/amt
       bouncePotency: on("bounce") ? st.bounce.potency : 0,
       inspiredPotency: on("inspired") ? st.inspired.potency : 0,
       weakPotency: st.weakened ? st.weakened.potency : 0.5,
@@ -157,7 +157,7 @@
   function collect(ctx, s) {
     const m = {
       mult: [], typeMult: [], addType: [], convert: [], swap: [], pen: [], penByDef: 0, natCrit: [], noDexCrit: false,
-      critRoll: [], critDmg: [], critBase: 0, critOnly: [], critIgnoreDef: [], critPen: 0, primal: 0, alwaysCrit: [], thief: 0,
+      critRoll: [], critDmg: [], critBase: 0, chains: [], critOnly: [], critIgnoreDef: [], critPen: 0, primal: 0, alwaysCrit: [], thief: 0,
       fractured: 0, atkSpeed: [], atkTime: 1, cd: { art: { mult: 1, speed: 0 }, rune: { mult: 1, speed: 0 } }, procs: [], echoes: [],
       dot: { Burn: {}, Bleed: {}, Poison: {} }, dotAll: { addType: {} }, ticks: [], overrides: [], hitsMult: [], rageTypes: [],
       deltaDrill: 0, divinity: 0, artFlat: 0, runeFlat: 0, artCast: 0, staticBuildup: 0, pyreBloom: 0, m2Override: null, active: [], lucky: 0,
@@ -188,6 +188,7 @@
       cd: (kind, type, v) => { if (type === "mult") m.cd[kind].mult *= v; else m.cd[kind].speed += v; },
       proc: (spec) => m.procs.push(spec),
       echo: (spec) => m.echoes.push(spec),
+      chain: (spec) => m.chains.push(spec),
       dot: (kind, o) => {
         const d = m.dot[kind];
         if (o.mult) d.mult = (d.mult || 1) * o.mult;
@@ -218,6 +219,12 @@
       pk.fx(E, a, ctx.S, ctx);
       m.active.push(pk.id);
     });
+    // Lightning Cloak (weapon art status): chain lightning on hits, 1/3 of the hit, 130% chance × proc coefficient, up to 4 extra
+    // targets. As a status toggle for single hits; in the timeline only during the 40s after casting the art.
+    if (ctx.wpn.art && ctx.wpn.art.id === "lightning-cloak") {
+      m.chains.push({ name: "Lightning Cloak chain", frac: 1 / 3, extra: 4, chance: 1.3, types: { Air: 0.5, Magic: 0.5 },
+        when: (atk) => atk.kind !== "dot" && (atk.cloak !== undefined ? atk.cloak : !!ctx.S.self["lightning-cloak"]) });
+    }
     // armor removed by target debuffs
     m.armorAll = (ctx.S.shatter + ctx.S.rend) * 100;
     m.armorMagic = ctx.S.hypno * 50;
@@ -474,9 +481,19 @@
         pushEcho(e.name, e, e.frac * pre * share * (e.crit ? critFactor : 1));
       });
       if (mods.fractured && cr.fracturedChance) pushEcho("Fractured", { types: { Magic: 0.5, Earth: 0.5 } }, cr.fracturedChance * mods.fractured * pre);
-      if (ctx.form.m1 === "Storm Caster" && (atk.kind === "m1" || atk.kind === "m2") && !mods.echoes.some((e) => e.name === "Storm Caster chain")) {
-        pushEcho("Storm Caster chain", { types: { Air: 0.5, Magic: 0.5 } }, pre / 6);
-      }
+      // Chain lightning (Lightning Cloak, Storm Caster): a share of the hit before its damage type and crit, then its own
+      // damage type (with type bonuses and conversions like Spirit Winds) and its own crit. It hits the initial target and
+      // chains to up to `extra` more, each once; with one enemy it chains back to the original target.
+      mods.chains.forEach((c) => {
+        if (!c.when(atk, types)) return;
+        const cAtk = { ...atk, types: c.types, isChain: true, weaponTypes: false };
+        const cTypes = finalTypes(ctx, mods, cAtk, rage);
+        const cCrit = crits(ctx, mods, s, cAtk, cTypes);
+        const targets = 1 + Math.min(c.extra || 0, Math.max(1, ctx.S.enemies || 1));
+        const chance = Math.min(1, (c.chance || 1) * (atk.procCoef === undefined ? 1 : atk.procCoef));
+        const scale = c.frac * pre * targets * chance * ((1 - cCrit.p) + cCrit.p * cCrit.mult);
+        pushEcho(`${c.name} ×${targets}`, { types: cTypes }, scale);
+      });
     }
     return {
       atk, base, hits: countHits(hits), effBoost, lvl, bonus, bonuses, crit: cr, pen, byType, expByType, armorByType, typeMults, types, scalings,
@@ -847,6 +864,9 @@
     const track = {};
     const rageWindows = [];
     const infWindows = []; // Dragon Infusion buff windows
+    const cloakWindows = []; // Lightning Cloak (weapon art) windows
+    const cloakArt = A.art && A.art.artId === "lightning-cloak";
+    const cloakDur = 40 * (1 + 0.33 * perk(ctx, "contained"));
     const dracInfusion = A.drac && A.drac.draconic === "infusion";
     const infUp = (x) => infWindows.some(([a, b]) => x >= a && x < b);
     const hitsBy = Object.fromEntries(ROT_KEYS.concat("proc").map((k) => [k, 0]));
@@ -858,6 +878,7 @@
     const use = (x, atk, key, span) => {
       const state = st(x);
       if (dracInfusion) atk = { ...atk, dracInf: infUp(x) }; // in the timeline the buff only counts inside its windows
+      if (cloakArt) atk = { ...atk, cloak: cloakWindows.some(([a, b]) => x >= a && x < b) };
       if (atk.hits && atk.hits.length) {
         const r = hit(ctx, mods, s, atk, state);
         const e = emit(x, key, r.expected, r.expByType, span);
@@ -901,6 +922,7 @@
       }
       if (pick === "rune" && rr) rageWindows.push([t, t + rr.duration]);
       if (pick === "drac" && atk.buff) infWindows.push([t, t + atk.buff.duration]);
+      if (pick === "art" && cloakArt) cloakWindows.push([t, t + cloakDur]);
       const r = use(t, atk, pick, tm.active > tm.cast + 1e-9 ? tm.active : 0);
       if ((pick === "art" || pick === "rune") && markLen && atk.hits && atk.hits.length) markEnd = t + markLen;
       if (pick === "art") {

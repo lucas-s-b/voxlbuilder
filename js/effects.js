@@ -71,11 +71,15 @@
       p("slayer-rage") && ["Slayer Rage (held rune)", 0.2 * p("slayer-rage")],
       p("blessing") && ["Blessing (heal proc)", 0.5],
     ] },
-    { id: "tailwind", name: "Tailwind", side: "self", potency: true, sources: (ctx, p) => [
+    // potencies include the Tailwind perk's +0.1/amt to every source (what the game shows); Whirlwind converts it
+    { id: "tailwind", name: "Tailwind / Whirlwind", side: "self", potency: true, sources: (ctx, p) => [
       p("tailwind") && ["Tailwind", 0.1], p("runic-winds") && ["Runic Winds", 0.1 * p("runic-winds")],
       p("guiding-winds") && ["Guiding Winds", 0.1 * p("guiding-winds")], p("cryo-engine") && ["Cryo Engine", 0.2 + 0.1 * p("cryo-engine")],
       p("true-balance") && ["True Balance", 0.1 * p("true-balance")], p("whirl-foot") && ["Whirl Foot", 0.1 * p("whirl-foot")],
-      p("emergency-exit") && ["Emergency Exit", 0.4 * p("emergency-exit")], p("blessing") && ["Blessing", 0.2],
+      p("emergency-exit") && ["Emergency Exit (when hit)", 0.4 * p("emergency-exit")], p("blessing") && ["Blessing", 0.2],
+    ].map((x) => x && [x[0], x[1] + 0.1 * p("tailwind")]) },
+    { id: "lightning-cloak", name: "Lightning Cloak", side: "self", sources: (ctx) => [
+      ctx.wpn.art && ctx.wpn.art.id === "lightning-cloak" && ["Lightning Cloak (weapon art, 40s)", 1],
     ] },
     { id: "bounce", name: "Bounce", side: "self", potency: true, sources: (ctx, p) => [
       rune(ctx, "bounce-rune") && ["Bounce Rune", 0.3], p("spring-step") && ["Spring Step", 0.2 * p("spring-step")],
@@ -401,7 +405,7 @@
   });
   perk("delta-drill", "M1 finisher repeats amt times at reduced damage", true, (E, a) => E.deltaDrill(Math.round(a)));
   perk("storm-caster", "Chain lightning for 1/6 of M1/M2 damage", true, (E, a, S, ctx) => {
-    if (ctx.form.m1 === "Storm Caster") E.echo({ name: "Storm Caster chain", frac: 1 / 6, types: { Air: 0.5, Magic: 0.5 }, when: W });
+    if (ctx.form.m1 === "Storm Caster") E.chain({ name: "Storm Caster chain", frac: 1 / 6, extra: 2, types: { Air: 0.5, Magic: 0.5 }, when: W });
   });
 
   // ---- weapon art / rune modifiers & overrides
@@ -446,7 +450,7 @@
   perk("primal", "Crit chance quartered; +1%/amt damage per 1% crit chance", true, (E, a) => E.primal(a));
   perk("carrying-winds", "High-knockback attacks: +10%/amt, extra crit roll from Air Boost", false, (E, a, S, ctx) => {
     E.mult("Carrying Winds", 1 + 0.1 * a, ALL);
-    E.critRoll("Carrying Winds", Math.min(1, (ctx.stats["Air Boost"] || 0) * a / 100), ALL);
+    E.critRoll("Carrying Winds", Math.min(1, (ctx.stats["Air Boost"] || 0) * a / 100), (atk) => !atk.isChain); // chain lightning isn't high knockback
   });
   perk("thief-training", "Base crit ×1.0+0.1/amt; behind the target always crit (+20%, or +30% if it'd crit anyway)", false, (E, a) => E.thief(a));
   perk("venom-eater", "Hit that consumes your Poison: guaranteed crit +10%/amt (base crit −0.3×+0.1/amt always applies)", false, (E, a, S) => {

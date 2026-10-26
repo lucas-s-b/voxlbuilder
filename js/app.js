@@ -211,7 +211,7 @@
     Object.entries(b.slots).forEach(([k, v]) => { compact.s[k] = [v.id, v.lvl, v.ench.map((e) => e || "")]; });
     Object.entries(b.inf).forEach(([k, v]) => { compact.i[k] = [v.id, v.lvl]; });
     if (b.race) compact.r = b.race;
-    if (b.guild) compact.g = [b.guild.id, b.guild.rank];
+    if (b.guild) compact.g = [b.guild.id, b.guild.rank, b.guild.ability || "", b.guild.color || ""];
     const w = b.weapon;
     if (w && (w.handle || w.blade || w.gloves || w.essence || w.art)) {
       compact.w = [w.mode, w.handle || "", w.blade || "", w.gloves || "", w.essence || "", w.shrine ? 1 : 0, w.art || ""];
@@ -231,7 +231,7 @@
       Object.entries(c.s || {}).forEach(([k, v]) => { b.slots[k] = { id: v[0], lvl: v[1], ench: (v[2] || []).map((e) => e || null) }; });
       Object.entries(c.i || {}).forEach(([k, v]) => { b.inf[k] = { id: v[0], lvl: v[1] }; });
       b.race = c.r;
-      if (c.g) b.guild = { id: c.g[0], rank: c.g[1] };
+      if (c.g) b.guild = { id: c.g[0], rank: c.g[1], ability: c.g[2] || undefined, color: c.g[3] || undefined };
       if (c.w) b.weapon = { mode: c.w[0], handle: c.w[1], blade: c.w[2], gloves: c.w[3], essence: c.w[4], shrine: !!c.w[5], art: c.w[6] };
       b.test = c.x;
       return sanitize(b);

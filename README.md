@@ -12,6 +12,13 @@ A build planner for the Roblox game **Voxlblade**, styled after the in-game inve
 - 3 loadouts saved in the browser, share links (`#b=…`) and a copy-as-text summary
 - **Character tab**: race (passives applied), guild + rank (stats and perks), weapon from Handle + Blade or
   Gloves + Essence (Monk), with Shrine of Balance tier bonus, automatic Hybrid ×1.5 scaling, Monk rank bonus and weapon art
+- **Test tab sequence**: build your own attack sequence (+ M1 combo, M2, weapon art, rune, draconic rune, special,
+  custom hit or a wait), reorder and repeat steps, then run it once (steps on cooldown wait for it) or repeat it for a
+  fight length (steps on cooldown are skipped that loop). Results show total, time, DPS and each step's damage; click a
+  step for its full hit breakdown. Sections: 1 Sequence, 2 Buffs (only what your build can use), 3 Enemy (sets the
+  target's defenses and who hits you), Advanced
+- **Character tab**: race, guild and weapon art collapse to your current pick (CHANGE to reopen); the part list opens
+  when you click a part slot
 - **Test tab**: damage simulator using the wiki's damage formula (scaling, level, damage bonuses, Rage,
   crits, armor penetration vs. target defenses). Toggle rune buffs (e.g. Rage Rune), DoTs (Burn/Bleed/Poison
   in dmg/s with potency perks), on-hit procs, then see per-hit damage, sustained DPS, average DPS over a
@@ -32,6 +39,10 @@ A build planner for the Roblox game **Voxlblade**, styled after the in-game inve
 - **Weapon art frame**: icons, only the arts your weapon can equip (Weapon Arts requirements, hybrid
   bonus excluded), damage per cast, cooldown, cast time and type split for the picked art
 - Click anything in the Character tab to pin its description (hover still previews)
+- **Short share links**: `#c=` codes are the build compacted (Test settings only where they differ from the
+  defaults), deflate-compressed and base64url'd — about a quarter of the old size. Old `#b=` links still load
+- **Workshop tab**: publish builds with a title, description and tags; browse by TOP/NEW, search, tag, race, guild
+  and weapon; like (♥), load into your loadout (undoable), copy a tiny `#w=<id>` link, and delete your own builds
 - **Draconic guild rune infusion** (Draconic Blood page): with the Draconic guild you pick the draconic rune on
   its extra rune key (Dragon Claw at rank 1, Dragon Infusion from rank 2, Dragon Bubble at rank 3) and your Dragon
   Blooded color. It's its own rotation action in the Test tab: Claw/Bubble damage of your color (Physical for other
@@ -84,3 +95,10 @@ Enchant math lives in `js/enchants.js` and `js/calc.js`, mirroring the wiki's en
 guild rules are in `js/model.js`, the damage model in `js/damage.js`, and the Character/Test views in `js/views.js`.
 
 Fan-made; not affiliated with Voxlblade.
+
+## Workshop database (Supabase)
+The workshop stores builds in a free Supabase project. `js/config.js` holds the project URL and its public
+(publishable/anon) key, which is meant to be public. `supabase/schema.sql` sets the database up; run it once in
+the Supabase SQL editor. Visitors can only read visible builds; publishing, liking and deleting go through
+checked functions (size limits, 5 publishes per connection per hour, one like per connection, delete only with
+the publisher's secret token). To moderate, tick `hidden` on a row in Table Editor → builds, or delete it.

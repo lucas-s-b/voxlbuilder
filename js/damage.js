@@ -24,6 +24,9 @@
     target: { Physical: 0, Magic: 0, Fire: 0, Water: 0, Earth: 0, Air: 0, Hex: 0, Holy: 0 },
     dots: { Burn: { on: false, potency: 0 }, Bleed: { on: false, potency: 0 }, Poison: { on: false, potency: 0 } },
     // rotation: "time" = everything enabled on cooldown for `duration` seconds; "count" = each enabled action `count` times
+    // sequence: the user's own list of steps ({a: action, n: times, w: seconds for "wait"}), run once or repeated
+    seq: [{ a: "m1", n: 3 }], seqRepeat: false,
+    enemy: "", // "" = training dummy, else a wiki enemy id: sets the target's defenses and who hits you
     rotMode: "time", duration: 30, spiritMax: 100,
     rotOrder: ["rune", "drac", "art", "special", "custom", "m1"], // priority, top first; "m1" = the M1 combo (+ its M2)
     timing: {}, // per action {cast, active} overrides, e.g. "art:starstream"
@@ -819,8 +822,13 @@
   // Only one action at a time: each locks you for its cast time. Hits of a move-stackable action (active > cast)
   // keep landing while you do other things. Cooldown actions go first when ready; M1 combos (each followed by an M2
   // when both are on) fill the gaps. With nothing to fill, the timeline waits for the next cooldown.
+  const SEQ_ACTIONS = ["m1", "m2", "art", "rune", "drac", "special", "custom", "wait"];
+
   function simulate(ctx, mods, s) {
-    const countMode = s.rotMode === "count";
+    // Sequence mode: the user's list of steps in order (Test tab). Otherwise the older priority rotation.
+    const seqMode = Array.isArray(s.seq);
+    const repeat = seqMode && !!s.seqRepeat;
+    const countMode = seqMode ? !repeat : s.rotMode === "count";
     const rot = rotation(s);
     const atks = attacks(ctx, mods, s);
     const find = (k) => atks.find((a) => a.key === k);
@@ -830,7 +838,7 @@
     const energyMax = Math.max(1, +s.spiritMax || 100);
     const cd = {
       art: A.art && A.art.cooldown, rune: A.rune && A.rune.cooldown, drac: A.drac && A.drac.cooldown,
-      special: spiritGated ? 0 : Math.max(0, +rot.special.cooldown || 0), custom: Math.max(0, +rot.custom.cooldown || 0),
+      special: spiritGated || seqMode ? 0 : Math.max(0, +rot.special.cooldown || 0), custom: seqMode ? 0 : Math.max(0, +rot.custom.cooldown || 0),
     };
     const usable = (k) => rot[k].on && A[k] && (k === "m1" ? A.m1.swings.length > 0 : k === "art" || k === "rune" || k === "drac" ? cd[k] > 0 : true);
     const left = Object.fromEntries(ROT_KEYS.map((k) => [k, !usable(k) ? 0 : countMode ? Math.max(0, Math.round(+rot[k].count || 0)) : Infinity]));
@@ -849,6 +857,8 @@
     const events = [];
     const end = countMode ? COUNT_LIMIT : Math.max(5, Math.min(300, +s.duration || 30));
     // spread an action's damage over its active time; returns the share that landed inside the fight
+    const stepOut = seqMode ? s.seq.map((st, i) => ({ i, a: st.a, dmg: 0, byType: {}, n: 0, waited: 0, t0: null, t1: null, note: "" })) : [];
+    let curStep = -1;
     const emit = (x, key, v, byType, span) => {
       const n = span > 1e-6 ? Math.min(40, Math.max(2, Math.ceil(span / 0.25))) : 1;
       let kept = 0;
@@ -859,6 +869,7 @@
         kept++;
       }
       sumTypes(typeTotals, byType, kept / n);
+      if (curStep >= 0) { stepOut[curStep].dmg += (v || 0) * kept / n; sumTypes(stepOut[curStep].byType, byType, kept / n); }
       return { kept: kept / n, last: x + (n === 1 ? 0 : span) };
     };
     const track = {};
@@ -892,7 +903,86 @@
         .forEach((p) => emit(x, "proc", p.dmg, p.byType, span));
       return null;
     };
-    while (t < end) {
+    // one action at time t: buff windows, damage, cooldown, energy, charges; advances t by its cast time
+    const perform = (pick, atkIn) => {
+      let atk = atkIn;
+      const tm = tim[pick];
+      if (pick === "rune" && beenades && atk.hits && atk.hits.length) {
+        atk = { ...atk, hits: atk.hits.concat([[atk.hits[0][0], beenades]]) }; // Bomber Satchel: extra Beenades
+        beenades = 0;
+      }
+      if (pick === "rune" && rr) rageWindows.push([t, t + rr.duration]);
+      if (pick === "drac" && atk.buff) infWindows.push([t, t + atk.buff.duration]);
+      if (pick === "art" && cloakArt) cloakWindows.push([t, t + cloakDur]);
+      const r = use(t, atk, pick, tm.active > tm.cast + 1e-9 ? tm.active : 0);
+      if ((pick === "art" || pick === "rune") && markLen && atk.hits && atk.hits.length) markEnd = t + markLen;
+      if (pick === "art") {
+        afterArt.forEach((p) => { windows[p.name] = t + p.afterArt(atk); });
+        if (perk(ctx, "bomber-satchel") && r && r.hits) beenades = 5;
+      }
+      if (pick in ready) ready[pick] = t + cd[pick];
+      if (pick !== "m1" && pick !== "m2") casts.push({ key: pick, t, cast: tm.cast, active: tm.active });
+      if (spiritGated) energy = pick === "special" ? 0 : Math.min(energyMax, energy + spiritGain(ctx, mods, s, atk, A.special.spiritId));
+      if (pick === "m1") charges = Math.min(20, charges + (r ? r.hits : 0));
+      if (pick === "m2") charges = 0;
+      if (pick !== "m1") log.push({ t, what: atk.name });
+      if (pick === "m1" || pick === "m2") {
+        ready.art -= mods.artFlat;
+        ready.rune -= mods.runeFlat;
+        if (mods.divinity && atk.finisher && ready.art > t) ready.art = t + (ready.art - t) * Math.max(0, 1 - 0.1 * mods.divinity);
+      }
+      t += tm.cast;
+      return r;
+    };
+
+    if (seqMode) {
+      // expand the steps into single actions (an M1 combo is all its swings)
+      const items = [];
+      s.seq.forEach((stp, i) => {
+        const n = Math.max(1, Math.min(50, Math.round(+stp.n || 1)));
+        for (let k = 0; k < n; k++) {
+          if (stp.a === "wait") items.push({ step: i, wait: Math.max(0, Math.min(60, +stp.w || 1)) });
+          else if (stp.a === "m1") A.m1.swings.forEach((sw, j) => items.push({ step: i, k: "m1", atk: sw, last: j === A.m1.swings.length - 1 }));
+          else items.push({ step: i, k: stp.a, atk: A[stp.a], last: true });
+        }
+      });
+      const hasAction = items.some((it) => !it.wait && it.atk);
+      const onCd = (it) => it.k in ready && cd[it.k] > 0 && t < ready[it.k] - 1e-9;
+      let qi = 0, acted = false;
+      while (items.length) {
+        if (qi >= items.length) {
+          if (!repeat || !hasAction) break;
+          if (!acted) {
+            // nothing in the loop was ready: wait for the soonest cooldown
+            const next = items.filter((it) => it.atk && it.k in ready && cd[it.k] > 0).map((it) => ready[it.k]);
+            if (!next.length) break;
+            t = Math.max(t, Math.min(...next));
+          }
+          qi = 0; acted = false; // repeat the sequence until the fight length
+        }
+        if (repeat && t >= end) break;
+        if (!repeat && t >= COUNT_LIMIT) break;
+        const it = items[qi++];
+        const out = stepOut[it.step];
+        curStep = it.step;
+        if (it.wait) { if (out.t0 === null) out.t0 = t; t += it.wait; out.t1 = t; out.n++; continue; }
+        if (!it.atk) { out.note = "not in this build"; continue; }
+        // run once: a step still on cooldown waits for it; repeating: it's skipped this loop
+        if (onCd(it)) {
+          if (repeat) { out.skipped = (out.skipped || 0) + 1; continue; }
+          out.waited += ready[it.k] - t; t = ready[it.k];
+        }
+        acted = true;
+        if (it.k === "special" && spiritGated && energy < energyMax - 1e-9) out.note = `released at ${Math.round(energy)}/${energyMax} energy`;
+        if (out.t0 === null) out.t0 = t;
+        perform(it.k, it.atk);
+        out.t1 = t;
+        if (it.last) { out.n++; done[it.k] = (done[it.k] || 0) + 1; }
+      }
+      curStep = -1;
+    }
+
+    while (!seqMode && t < end) {
       const isReady = (k) => (k === "special" && spiritGated ? energy >= energyMax - 1e-9 : cd[k] > 0 && t >= ready[k] - 1e-9);
       // Highest priority first. By count the order is strict (M1 combo on top = all combos first); on cooldown,
       // actions ranked below the M1 combo wait until the current combo (and its M2) ends instead of cutting in.
@@ -914,38 +1004,13 @@
         t = Math.max(t, Math.min(...next)); // idle until the next cooldown is up
         continue;
       }
-      let atk = pick === "m1" ? A.m1.swings[swing] : A[pick];
-      const tm = tim[pick];
-      if (pick === "rune" && beenades && atk.hits && atk.hits.length) {
-        atk = { ...atk, hits: atk.hits.concat([[atk.hits[0][0], beenades]]) }; // Bomber Satchel: extra Beenades
-        beenades = 0;
-      }
-      if (pick === "rune" && rr) rageWindows.push([t, t + rr.duration]);
-      if (pick === "drac" && atk.buff) infWindows.push([t, t + atk.buff.duration]);
-      if (pick === "art" && cloakArt) cloakWindows.push([t, t + cloakDur]);
-      const r = use(t, atk, pick, tm.active > tm.cast + 1e-9 ? tm.active : 0);
-      if ((pick === "art" || pick === "rune") && markLen && atk.hits && atk.hits.length) markEnd = t + markLen;
-      if (pick === "art") {
-        afterArt.forEach((p) => { windows[p.name] = t + p.afterArt(atk); });
-        if (perk(ctx, "bomber-satchel") && r && r.hits) beenades = 5;
-      }
-      if (pick in ready) ready[pick] = t + cd[pick];
-      if (pick !== "m1" && pick !== "m2") casts.push({ key: pick, t, cast: tm.cast, active: tm.active });
-      if (spiritGated) energy = pick === "special" ? 0 : Math.min(energyMax, energy + spiritGain(ctx, mods, s, atk, A.special.spiritId));
+      perform(pick, pick === "m1" ? A.m1.swings[swing] : A[pick]);
       if (pick === "m1") {
-        charges = Math.min(20, charges + (r ? r.hits : 0));
         if (++swing >= A.m1.swings.length) { swing = 0; left.m1--; done.m1++; m2Due = left.m2 > 0; }
       } else {
         left[pick]--; done[pick]++;
-        if (pick === "m2") { m2Due = false; charges = 0; }
-        log.push({ t, what: atk.name });
+        if (pick === "m2") m2Due = false;
       }
-      if (pick === "m1" || pick === "m2") {
-        ready.art -= mods.artFlat;
-        ready.rune -= mods.runeFlat;
-        if (mods.divinity && atk.finisher && ready.art > t) ready.art = t + (ready.art - t) * Math.max(0, 1 - 0.1 * mods.divinity);
-      }
-      t += tm.cast;
     }
     const capped = countMode && t >= COUNT_LIMIT;
     const T = countMode ? Math.min(COUNT_LIMIT, Math.max(t, lastHit)) : end;
@@ -972,7 +1037,7 @@
     const bySource = Object.fromEntries(keys.map((k) => [k, bins.reduce((a, b) => a + b[k], 0)]));
     return {
       T: round(T), mode: countMode ? "count" : "time", bins, perSec, total: fightTotal, avg: T > 0 ? fightTotal / T : 0, peak: Math.max(...perSec),
-      bySource, typeTotals, log, attackSpeed: as, done, capped, cooldowns: cd, timing: tim, casts, hitsBy, dotTotal,
+      bySource, typeTotals, log, attackSpeed: as, done, capped, cooldowns: cd, timing: tim, casts, hitsBy, dotTotal, steps: stepOut, repeat,
       direct: fightTotal - bySource.dot, spiritGated, energyMax, infUptime: Math.min(1, infWindows.reduce((q, [a, b]) => q + Math.max(0, Math.min(b, T) - a), 0) / Math.max(1e-6, T)),
     };
   }
@@ -997,7 +1062,7 @@
 
   window.VoxlDamage = {
     DMG_TYPES, DOTS, defaults, context, collect, attacks, hit, procsFor, dot, ticks, attackSpeed,
-    simulate, sustained, ragePotency, runeRage, swingPattern, rotation, rotOrder, ROT_KEYS, potencyMult, artCooldown, runeCooldown,
+    simulate, sustained, ragePotency, runeRage, swingPattern, rotation, rotOrder, ROT_KEYS, SEQ_ACTIONS, potencyMult, artCooldown, runeCooldown,
     artAttack, timing, ART_TIMING, spiritGain, SPIRIT_COEFF, armorMult, draconicAttack,
   };
 })();

@@ -123,7 +123,7 @@
     const d = Dmg.defaults();
     if (!t || typeof t !== "object") return d;
     const out = { ...d };
-    ["attack", "swingTime", "perkAtkSpeed", "customBase", "customHits", "crit", "dmgBonus", "rotMode", "duration"].forEach((k) => {
+    ["attack", "swingTime", "perkAtkSpeed", "customBase", "customHits", "crit", "dmgBonus", "rotMode", "duration", "seqRepeat", "enemy"].forEach((k) => {
       if (t[k] !== undefined && typeof t[k] === typeof d[k]) out[k] = t[k];
     });
     if (!["time", "count"].includes(out.rotMode)) out.rotMode = "time";
@@ -150,6 +150,12 @@
       .filter(([k, v]) => /^[a-z0-9-]+$/i.test(k) && ok(v)));
     if (typeof t.spiritMax === "number" && t.spiritMax > 0) out.spiritMax = Math.min(1000, t.spiritMax);
     out.rotOrder = Dmg.rotOrder(t);
+    if (Array.isArray(t.seq)) {
+      out.seq = t.seq.slice(0, 30).filter((x) => x && Dmg.SEQ_ACTIONS.includes(x.a)).map((x) => ({
+        a: x.a, n: clamp(Math.round(+x.n || 1), 1, 50), ...(x.a === "wait" ? { w: clamp(+x.w || 1, 0.1, 60) } : {}),
+      }));
+    }
+    if (out.enemy && !(window.VOXL_DATA.enemies || []).some((e) => e.id === out.enemy)) out.enemy = "";
     const num = (v, lo, hi) => (typeof v === "number" && Number.isFinite(v) ? clamp(v, lo, hi) : undefined);
     out.timing = Object.fromEntries(Object.entries(t.timing && typeof t.timing === "object" ? t.timing : {})
       .filter(([k, v]) => /^[a-z0-9:-]+$/i.test(k) && v && typeof v === "object")
@@ -158,6 +164,9 @@
     const inc = t.inc && typeof t.inc === "object" ? t.inc : {};
     out.inc = Object.fromEntries(Object.entries(incDef).map(([k, d]) => [k, typeof inc[k] === typeof d ? inc[k] : d]));
     if (!window.VoxlSupport.INC_TYPES.includes(out.inc.type)) out.inc.type = incDef.type;
+    // the chosen enemy is also the one hitting you; the training dummy uses your own hit
+    out.inc.mode = out.enemy ? "enemy" : "custom";
+    if (out.enemy) out.inc.enemy = out.enemy;
     out.potions = plain(t.potions, (v) => typeof v === "boolean");
     out.perkOn = plain(t.perkOn, (v) => typeof v === "boolean");
     out.sit = plain(t.sit, (v) => ["number", "string", "boolean"].includes(typeof v));
@@ -182,17 +191,19 @@
     view: "inv", slot: "head", mode: "item", selected: null, hover: null, search: "", sort: "", favOnly: false, tab: "stats", socket: null,
     partKind: "handle", partSearch: "", partSort: "", hoverEntity: null, pinEntity: null,
   };
-  const VIEWS = [["inv", "INVENTORY"], ["char", "CHARACTER"], ["test", "TEST"]];
+  const VIEWS = [["inv", "INVENTORY"], ["char", "CHARACTER"], ["test", "TEST"], ["shop", "WORKSHOP"]];
   let undoSnapshot = null;
 
   const build = () => store.loadouts[store.active];
   const totalsOf = (b) => C.buildTotals(b, itemById, M.extraSources(b));
   const target = () => (ui.mode === "inf" ? build().inf[ui.slot] : build().slots[ui.slot]);
 
+  let saveSeq = 0;
   function save() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) { /* storage unavailable */ }
-    const url = location.pathname + location.search + "#b=" + encodeBuild(build());
-    history.replaceState(null, "", url);
+    // keep the address bar on the current build's share code (encoding is async; only the latest save writes it)
+    const seq = ++saveSeq;
+    encodeShare(build()).then((code) => { if (seq === saveSeq) history.replaceState(null, "", location.pathname + location.search + "#" + code); });
   }
 
   function snapshot() { undoSnapshot = { active: store.active, build: JSON.parse(JSON.stringify(build())) }; }
@@ -206,7 +217,22 @@
   }
 
   // ------------------------------------------------------------ share links
-  function encodeBuild(b) {
+  // "#c=" codes: the compact build with only the Test settings that differ from the defaults, deflated and base64url'd.
+  // Older "#b=" codes (plain base64 JSON) still load.
+  const testDefaults = () => ({ ...Dmg.defaults(), inc: window.VoxlSupport.defaults() });
+
+  // the parts of `v` that differ from `d` (objects compared key by key, everything else as a whole)
+  function diff(v, d) {
+    const obj = (x) => x && typeof x === "object" && !Array.isArray(x);
+    if (obj(v) && obj(d)) {
+      const out = {};
+      Object.keys(v).forEach((k) => { const x = diff(v[k], d[k]); if (x !== undefined) out[k] = x; });
+      return Object.keys(out).length ? out : undefined;
+    }
+    return JSON.stringify(v) === JSON.stringify(d) ? undefined : v;
+  }
+
+  function compactBuild(b) {
     const compact = { n: b.name, l: b.level, t: b.notes || undefined, s: {}, i: {} };
     Object.entries(b.slots).forEach(([k, v]) => { compact.s[k] = [v.id, v.lvl, v.ench.map((e) => e || "")]; });
     Object.entries(b.inf).forEach(([k, v]) => { compact.i[k] = [v.id, v.lvl]; });
@@ -216,33 +242,47 @@
     if (w && (w.handle || w.blade || w.gloves || w.essence || w.art)) {
       compact.w = [w.mode, w.handle || "", w.blade || "", w.gloves || "", w.essence || "", w.shrine ? 1 : 0, w.art || ""];
     }
-    compact.x = b.test;
-    const bytes = new TextEncoder().encode(JSON.stringify(compact));
-    let bin = "";
-    bytes.forEach((x) => { bin += String.fromCharCode(x); });
-    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const x = diff(b.test, testDefaults());
+    if (x) compact.x = x;
+    return compact;
   }
 
-  function decodeBuild(str) {
+  function expandBuild(c) {
+    const b = { name: c.n, level: c.l, notes: c.t, slots: {}, inf: {} };
+    Object.entries(c.s || {}).forEach(([k, v]) => { b.slots[k] = { id: v[0], lvl: v[1], ench: (v[2] || []).map((e) => e || null) }; });
+    Object.entries(c.i || {}).forEach(([k, v]) => { b.inf[k] = { id: v[0], lvl: v[1] }; });
+    b.race = c.r;
+    if (c.g) b.guild = { id: c.g[0], rank: c.g[1], ability: c.g[2] || undefined, color: c.g[3] || undefined };
+    if (c.w) b.weapon = { mode: c.w[0], handle: c.w[1], blade: c.w[2], gloves: c.w[3], essence: c.w[4], shrine: !!c.w[5], art: c.w[6] };
+    b.test = c.x || {};
+    return b;
+  }
+
+  const b64url = (bytes) => { let bin = ""; bytes.forEach((x) => { bin += String.fromCharCode(x); }); return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+  const unb64url = (str) => Uint8Array.from(atob(str.replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0));
+  const pipeBytes = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+  const canZip = typeof CompressionStream === "function" && typeof DecompressionStream === "function";
+
+  // "c=…" (or "b=…" in browsers without CompressionStream)
+  async function encodeShare(b) {
+    const json = new TextEncoder().encode(JSON.stringify(compactBuild(b)));
+    return canZip ? "c=" + b64url(await pipeBytes(json, new CompressionStream("deflate-raw"))) : "b=" + b64url(json);
+  }
+
+  async function decodeShare(kind, str) {
     try {
-      const bin = atob(str.replace(/-/g, "+").replace(/_/g, "/"));
-      const c = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0))));
-      const b = { name: c.n, level: c.l, notes: c.t, slots: {}, inf: {} };
-      Object.entries(c.s || {}).forEach(([k, v]) => { b.slots[k] = { id: v[0], lvl: v[1], ench: (v[2] || []).map((e) => e || null) }; });
-      Object.entries(c.i || {}).forEach(([k, v]) => { b.inf[k] = { id: v[0], lvl: v[1] }; });
-      b.race = c.r;
-      if (c.g) b.guild = { id: c.g[0], rank: c.g[1], ability: c.g[2] || undefined, color: c.g[3] || undefined };
-      if (c.w) b.weapon = { mode: c.w[0], handle: c.w[1], blade: c.w[2], gloves: c.w[3], essence: c.w[4], shrine: !!c.w[5], art: c.w[6] };
-      b.test = c.x;
-      return sanitize(b);
+      const bytes = unb64url(str);
+      const raw = kind === "c" ? await pipeBytes(bytes, new DecompressionStream("deflate-raw")) : bytes;
+      return sanitize(expandBuild(JSON.parse(new TextDecoder().decode(raw))));
     } catch (e) {
       return null;
     }
   }
 
-  function shareUrl() { return location.href.split("#")[0] + "#b=" + encodeBuild(build()); }
+  async function shareUrl() { return location.href.split("#")[0] + "#" + await encodeShare(build()); }
 
-  async function copy(text, okMsg) {
+  async function copy(textOrPromise, okMsg) {
+    const text = await textOrPromise;
     try {
       await navigator.clipboard.writeText(text);
       toast(okMsg);
@@ -491,7 +531,9 @@
       return;
     }
     if (ui.view !== "inv") {
-      box.innerHTML = ui.view === "char"
+      box.innerHTML = ui.view === "shop"
+        ? `<div class="d-hint">Browse builds other players published. Search, filter by tags, race, guild or weapon, like the ones you enjoy and press LOAD to put one into your current loadout (you can undo). Use + PUBLISH to share yours.</div>`
+        : ui.view === "char"
         ? `<div class="d-hint">Pick a race, a guild and rank, and build your weapon from two parts. Hover anything to preview it; click to pin its details here. Weapon, guild and race stats are added to your totals.</div>`
         : `<div class="d-hint">Choose an attack, toggle buffs, DoTs and the target's defenses. Damage follows the wiki's damage formula. The rotation runs one action at a time with cast times, and the Survival card covers defense, healing and minion perks.</div>`;
       return;
@@ -557,8 +599,11 @@
     $("viewTabs").innerHTML = VIEWS.map(([k, label]) =>
       `<button class="vtab outline${ui.view === k ? " active" : ""}" data-view="${k}">${label}</button>`).join("");
     VIEWS.forEach(([k]) => { $("view-" + k).hidden = ui.view !== k; });
+    // Test and Workshop show their own numbers: they get the full width instead of the stats column
+    document.querySelector("main.inv").classList.toggle("wide", ui.view === "test" || ui.view === "shop");
     if (ui.view === "char") window.VoxlViews.char.render(api);
     if (ui.view === "test") window.VoxlViews.test.render(api);
+    if (ui.view === "shop") window.VoxlWorkshop.render();
     renderBadges();
     renderDesc();
   }
@@ -685,7 +730,7 @@
   }
 
   // ------------------------------------------------------------ text export
-  function buildText() {
+  async function buildText() {
     const b = build();
     const totals = totalsOf(b);
     const lines = [`Voxlblade build: ${b.name} (LV ${b.level})`];
@@ -706,7 +751,7 @@
     const pk = Object.values(totals.perks).map((p) => `${perkInfo(p.id, p.name).name} +${C.round(p.amount)}`);
     if (pk.length) lines.push("Perks: " + pk.join(", "));
     if (b.notes) lines.push("Notes: " + b.notes);
-    lines.push(shareUrl());
+    lines.push(await shareUrl());
     return lines.join("\n");
   }
 
@@ -797,6 +842,7 @@
   });
 
   $("shareBtn").addEventListener("click", () => copy(shareUrl(), "Build link copied!"));
+  // (shareUrl is async: copy() awaits it)
 
   $("rightBody").addEventListener("input", (e) => {
     const b = build();
@@ -841,6 +887,7 @@
   window.VoxlApp = api;
   window.VoxlViews.char.bind(api);
   window.VoxlViews.test.bind(api);
+  window.VoxlWorkshop.bind(api);
 
   document.addEventListener("click", (e) => {
     const v = e.target.closest("[data-view]");
@@ -850,17 +897,37 @@
     renderView();
   });
 
-  // ------------------------------------------------------------ boot
-  const m = location.hash.match(/^#b=([A-Za-z0-9_-]+)/);
-  if (m) {
-    const shared = decodeBuild(m[1]);
-    if (shared && JSON.stringify(shared) !== JSON.stringify(build())) {
-      snapshot();
-      store.loadouts[store.active] = shared;
-      try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) { /* storage unavailable */ }
-      setTimeout(() => toast(`Loaded shared build into loadout ${store.active + 1}`, { label: "UNDO", run: undo }), 300);
-    }
+  // Put a build into the active loadout (undoable).
+  function loadIntoLoadout(shared, label) {
+    if (!shared) return false;
+    if (JSON.stringify(shared) === JSON.stringify(build())) { toast(`That build is already in loadout ${store.active + 1}`); return true; }
+    snapshot();
+    store.loadouts[store.active] = shared;
+    ui.selected = null;
+    commit();
+    toast(`Loaded ${label || "shared build"} into loadout ${store.active + 1}`, { label: "UNDO", run: undo });
+    return true;
   }
+  api.encodeShare = encodeShare;
+  api.decodeShare = decodeShare;
+  api.loadIntoLoadout = loadIntoLoadout;
+  api.copy = copy;
+  api.toast = toast;
+  api.shareUrl = shareUrl;
+
+  // ------------------------------------------------------------ boot
   renderAll();
-  save();
+  (async () => {
+    const m = location.hash.match(/^#([bc])=([A-Za-z0-9_-]+)/);
+    const w = location.hash.match(/^#w=([A-Za-z0-9_-]+)/);
+    if (m) {
+      const shared = await decodeShare(m[1], m[2]);
+      if (shared) loadIntoLoadout(shared);
+      else toast("That build link is broken");
+    } else if (w && window.VoxlWorkshop) {
+      await window.VoxlWorkshop.openLink(api, w[1]);
+      return; // keeps the #w= link in the address bar
+    }
+    save();
+  })();
 })();

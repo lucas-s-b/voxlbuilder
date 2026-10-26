@@ -127,63 +127,72 @@
     }
     const lockedList = locked.map((a) => `<div class="step"><span>${a.image ? img(a.image, a.name) : ""}<b>${esc(a.name)}</b></span><span class="muted">${esc(M.artMissing(wpn, a.id).join(" · "))}</span></div>`).join("");
 
+    // Pickers collapse to the current choice once one is made; CHANGE opens the full grid again.
+    const open = ui.pickOpen || (ui.pickOpen = {});
+    const isOpen = (k, chosen) => !chosen || !!open[k];
+    const current = (key, icon, name, sub) => `<div class="pick-current">
+        <span class="pc-ico">${icon || ""}</span><div class="pc-text"><b class="outline">${name}</b><span>${sub}</span></div>
+        <button class="mode-tab outline" data-pick-open="${key}">${open[key] ? "CLOSE" : "CHANGE"}</button></div>`;
+    const sec = (n, title, head, body) => `<section class="cv-sec">
+        <div class="cv-head"><span class="sec-n outline">${n}</span><h3 class="outline">${title}</h3>${head || ""}</div>${body}</section>`;
+
+    const raceBody = race
+      ? current("race", race.image ? img(race.image, race.name) : "", esc(race.name), esc(race.passive)) + (open.race ? `<div class="pick-grid">${raceTiles}</div>` : "")
+      : `<div class="pick-grid">${raceTiles}</div><div class="cv-note">Pick a race. Its passive is added to your stats and the Test tab.</div>`;
+    const guildBody = (gr
+      ? current("guild", gr.guild.image ? img(gr.guild.image, gr.guild.name) : "", `${esc(gr.guild.name)} · rank ${gr.rank}`, esc(gr.guild.desc)) + (open.guild ? `<div class="pick-grid">${guildTiles}</div>` : "")
+      : `<div class="pick-grid">${guildTiles}</div><div class="cv-note">Pick a guild and rank. Its stats and perks are added to your build.</div>`) + dracBlock;
+    const n0 = eq ? nums(eq) : null;
+    const artBody = wpn.parts.length < 2
+      ? `<div class="cv-note">Build your weapon first: the arts you can use depend on it.</div>`
+      : (eq ? current("art", eq.image ? img(eq.image, eq.name) : "", esc(eq.name),
+          `${n0.h ? fmt(n0.h.expected, 0) + " damage" : "No damage"} · ${n0.atk.cooldown || "?"}s cooldown · ${fmt(n0.tm.cast, 2)}s cast`) : "") +
+        (isOpen("art", eq) ? `<div class="pick-grid art-picks">${artTiles}</div>` : "") +
+        (eq ? `<details class="steps sub-fold"><summary class="outline">ART DETAILS</summary>${artCard}</details>` : "") +
+        (locked.length && isOpen("art", eq) ? `<details class="steps art-locked"><summary class="outline">LOCKED FOR THIS WEAPON (${locked.length})</summary>${lockedList}</details>` : "");
+    const partsOpen = open.parts || wpn.parts.length < 2;
+    const weaponBody = `
+      ${monkWarn}
+      <div class="wpn-top">${slotBtn(kinds[0])}<span class="wpn-plus outline">+</span>${slotBtn(kinds[1])}
+        <div class="wpn-sum dark">
+          <div class="ws-type outline">${esc(wpn.typeName.toUpperCase())}${wpn.parts.length === 2 && form.m1 !== wpn.typeName ? ` → ${esc(form.m1.toUpperCase())}` : ""}</div>
+          ${wpn.parts.length === 2 ? `<div class="ws-line">M1 <b>${esc(comboText(form.m1Moves))}</b> · M2 <b>${esc(movesText(form.m2Moves))}</b></div>` : `<div class="ws-line muted">Pick ${kinds.map((k) => PART_LABEL[k].toLowerCase()).join(" and ")}</div>`}
+          <div class="ws-line">Speed <b>${wpn.attackSpeed ? fmt(wpn.attackSpeed, 2) : "—"}</b>${wpn.hybrid ? ` · <span style="color:#6dff9a">hybrid ×1.5</span>` : ""}</div>
+        </div>
+      </div>
+      <label class="toggle"><input type="checkbox" data-shrine ${w.shrine ? "checked" : ""}> <span>Shrine of Balance <span class="muted">(only if you used it in game)</span></span></label>
+      ${partsOpen ? `<div class="parts-box">
+        <div class="filters">
+          <input class="search" id="partSearch" type="search" placeholder="Search ${PART_LABEL[ui.partKind].toLowerCase()}s…" value="${esc(ui.partSearch || "")}" autocomplete="off">
+          <select class="sort" id="partSort" title="Sort parts">
+            <option value="">Sort: A–Z</option><option value="tier"${ui.partSort === "tier" ? " selected" : ""}>Tier</option>
+            <option value="speed"${ui.partSort === "speed" ? " selected" : ""}>Attack speed</option>
+          </select>
+          ${wpn.parts.length === 2 ? `<button class="mode-tab outline" data-pick-open="parts">DONE</button>` : ""}
+        </div>
+        <div class="grid dark part-grid" id="partGrid"></div></div>` : `<div class="muted">Click a part above to change it.</div>`}
+      ${wpn.parts.length ? `<details class="steps sub-fold"><summary class="outline">WEAPON STATS</summary>
+        <div class="wpn-detail dark">
+          <div><div class="wd-h outline">DAMAGE TYPE</div>${typeBars || `<span class="muted">—</span>`}</div>
+          <div><div class="wd-h outline">SCALINGS</div><div class="chips">${scal || `<span class="muted">—</span>`}</div></div>
+          <div><div class="wd-h outline">BOOSTS</div>${boosts || `<span class="muted">—</span>`}</div>
+          <div><div class="wd-h outline">PERKS</div><div class="chips">${perks || `<span class="muted">—</span>`}</div></div>
+        </div>${form.notes.length ? `<div class="muted">${form.notes.map(esc).join(" · ")}</div>` : ""}</details>` : ""}`;
+
     A.$("viewChar").innerHTML = `
       <div class="cv-grid">
         <div class="cv-col">
-          <section class="cv-sec">
-            <div class="cv-head"><h3 class="outline">RACE</h3></div>
-            <div class="pick-grid">${raceTiles}</div>
-            <div class="cv-note">${race ? `<b class="outline" style="color:#6dff9a">${esc(race.name)}:</b> ${esc(race.passive)}` : "Pick a race. Its passive is applied to your stats and the Test tab."}</div>
-          </section>
-          <section class="cv-sec">
-            <div class="cv-head"><h3 class="outline">GUILD</h3><div class="mode-tabs">${ranks}</div></div>
-            <div class="pick-grid">${guildTiles}</div>
-            <div class="cv-note">${gr ? `<b class="outline" style="color:#6dff9a">${esc(gr.guild.name)} rank ${gr.rank}:</b> ${esc(gr.guild.desc)}` : "Pick a guild and rank. Its stats and perks are added to your build."}</div>
-            ${dracBlock}
-          </section>
-          <section class="cv-sec">
-            <div class="cv-head"><h3 class="outline">WEAPON ART</h3><span class="cv-sub outline">${allowed.length} OF ${D.arts.length} AVAILABLE</span></div>
-            ${wpn.parts.length < 2 ? `<div class="cv-note">Build a weapon (two parts) to see the weapon arts it can use.</div>` : `<div class="pick-grid art-picks">${artTiles}</div>`}
-            ${artCard}
-            ${wpn.parts.length >= 2 && locked.length ? `<details class="steps art-locked"><summary class="outline">LOCKED FOR THIS WEAPON (${locked.length})</summary>${lockedList}</details>` : ""}
-          </section>
+          ${sec(1, "RACE", "", raceBody)}
+          ${sec(2, "GUILD", `<div class="mode-tabs">${ranks}</div>`, guildBody)}
         </div>
         <div class="cv-col">
-          <section class="cv-sec">
-            <div class="cv-head"><h3 class="outline">WEAPON</h3>
-              <div class="mode-tabs">
-                <button class="mode-tab outline${w.mode === "sword" ? " active" : ""}" data-wmode="sword">HANDLE + BLADE</button>
-                <button class="mode-tab outline${w.mode === "monk" ? " active" : ""}" data-wmode="monk">GLOVES + ESSENCE</button>
-              </div></div>
-            ${monkWarn}
-            <div class="wpn-top">${slotBtn(kinds[0])}<span class="wpn-plus outline">+</span>${slotBtn(kinds[1])}
-              <div class="wpn-sum dark">
-                <div class="ws-type outline">${esc(wpn.typeName.toUpperCase())}${wpn.parts.length === 2 && form.m1 !== wpn.typeName ? ` → ${esc(form.m1.toUpperCase())}` : ""}</div>
-                ${wpn.parts.length === 2 ? `<div class="ws-line">M1: <b>${esc(comboText(form.m1Moves))}</b> · M2${form.m2 !== form.m1 ? ` (${esc(form.m2)})` : ""}: <b>${esc(movesText(form.m2Moves))}</b></div>
-                ${form.notes.length ? `<div class="ws-line muted">${form.notes.map(esc).join(" · ")}</div>` : ""}` : ""}
-                <div class="ws-line">Attack Speed: <b>${wpn.attackSpeed ? fmt(wpn.attackSpeed, 2) : "—"}</b></div>
-                <div class="ws-line">${wpn.hybrid ? `<span class="chip outline" style="color:#6dff9a">HYBRID ×1.5 scaling</span>` : `<span class="muted">No hybrid bonus</span>`}</div>
-              </div>
-            </div>
-            <label class="toggle"><input type="checkbox" data-shrine ${w.shrine ? "checked" : ""}> <span>Shrine of Balance (T1 ×3, T2 ×1.7, T3 ×1.4, T4 ×1.1 scalings &amp; boosts)</span></label>
-            <div class="wpn-detail dark">
-              <div><div class="wd-h outline">DAMAGE TYPE</div>${typeBars || `<span class="muted">—</span>`}</div>
-              <div><div class="wd-h outline">SCALINGS</div><div class="chips">${scal || `<span class="muted">—</span>`}</div></div>
-              <div><div class="wd-h outline">BOOSTS</div>${boosts || `<span class="muted">—</span>`}</div>
-              <div><div class="wd-h outline">PERKS</div><div class="chips">${perks || `<span class="muted">—</span>`}</div></div>
-            </div>
-            <div class="filters">
-              <input class="search" id="partSearch" type="search" placeholder="Search ${PART_LABEL[ui.partKind].toLowerCase()}s…" value="${esc(ui.partSearch || "")}" autocomplete="off">
-              <select class="sort" id="partSort" title="Sort parts">
-                <option value="">Sort: A–Z</option><option value="tier"${ui.partSort === "tier" ? " selected" : ""}>Tier</option>
-                <option value="speed"${ui.partSort === "speed" ? " selected" : ""}>Attack speed</option>
-              </select>
-            </div>
-            <div class="grid dark part-grid" id="partGrid"></div>
-          </section>
+          ${sec(3, "WEAPON", `<div class="mode-tabs">
+              <button class="mode-tab outline${w.mode === "sword" ? " active" : ""}" data-wmode="sword">HANDLE + BLADE</button>
+              <button class="mode-tab outline${w.mode === "monk" ? " active" : ""}" data-wmode="monk">GLOVES + ESSENCE</button></div>`, weaponBody)}
+          ${sec(4, "WEAPON ART", `<span class="cv-sub outline">${allowed.length} OF ${D.arts.length}</span>`, artBody)}
         </div>
       </div>`;
-    renderPartGrid(A);
+    if (partsOpen) renderPartGrid(A);
   }
 
   function renderPartGrid(A) {
@@ -211,23 +220,31 @@
       let el;
       const ent = t("[data-ent]");
       if (ent) A.ui.pinEntity = ent.dataset.ent;
-      if ((el = t("[data-race]"))) { b.race = b.race === el.dataset.race ? null : el.dataset.race; return A.commit(); }
+      const open = A.ui.pickOpen || (A.ui.pickOpen = {});
+      if ((el = t("[data-pick-open]"))) { const k = el.dataset.pickOpen; open[k] = !open[k]; return renderChar(A); }
+      if ((el = t("[data-race]"))) { b.race = b.race === el.dataset.race ? null : el.dataset.race; open.race = false; return A.commit(); }
       if ((el = t("[data-guild]"))) {
         const id = el.dataset.guild;
         b.guild = id ? { id, rank: b.guild ? b.guild.rank : 3 } : null;
+        open.guild = false;
         return A.commit();
       }
       if ((el = t("[data-rank]"))) { b.guild.rank = +el.dataset.rank; return A.commit(); }
       if ((el = t("[data-drac-ability]")) && !el.disabled) { b.guild.ability = el.dataset.dracAbility; return A.commit(); }
       if ((el = t("[data-drac-color]"))) { b.guild.color = el.dataset.dracColor; return A.commit(); }
       if ((el = t("[data-wmode]"))) { b.weapon.mode = el.dataset.wmode; A.ui.partKind = partKinds(b.weapon.mode)[0]; return A.commit(); }
-      if ((el = t("[data-pk]"))) { A.ui.partKind = el.dataset.pk; A.ui.partSearch = ""; return renderChar(A); }
+      if ((el = t("[data-pk]"))) {
+        // clicking a part slot opens the part list for it (clicking the open one again closes it)
+        open.parts = !(open.parts && A.ui.partKind === el.dataset.pk);
+        A.ui.partKind = el.dataset.pk; A.ui.partSearch = "";
+        return renderChar(A);
+      }
       if ((el = t("[data-part]"))) {
         const p = A.M.partById[el.dataset.part];
         b.weapon[p.kind] = b.weapon[p.kind] === p.id ? null : p.id;
         return A.commit();
       }
-      if ((el = t("[data-art]"))) { b.weapon.art = b.weapon.art === el.dataset.art ? null : el.dataset.art; return A.commit(); }
+      if ((el = t("[data-art]"))) { b.weapon.art = b.weapon.art === el.dataset.art ? null : el.dataset.art; open.art = false; return A.commit(); }
     });
     root.addEventListener("change", (e) => {
       if (e.target.matches("[data-shrine]")) { A.build().weapon.shrine = e.target.checked; A.commit(); }

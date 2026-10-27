@@ -682,12 +682,12 @@
   // after 8 / (1 + 0.25 × amount) s sped up by attack speed, it fires a Swipe (4.75 + 2.75 × amount) and a Ranged
   // Slash (2.375 + 1.375 × amount), both ×1.8, weapon damage types, 1.0 Physical and Air scaling. Otherwise the
   // Lance and the Rifle have a held M2 (Lance 6.8 → 20, Rifle 17 → 45.3; the wiki gives no charge time).
-  // On the Scythe both hit 3 times, like its M2: an in-game test of the Lord Vaen scythe matched 3 hits, not 1 (the
-  // wiki gives the damage of one hit).
+  // On the Scythe both hit twice: an in-game test of a Lord Vaen scythe build (about 8k per charged attack) matched
+  // 2 hits, not 1 (the wiki gives the damage of one hit).
   function chargedM2(ctx, f) {
     const ichor = perk(ctx, "ichor-spark");
     if (ichor) {
-      const n = f.m2 === "Scythe" ? 3 : 1;
+      const n = f.m2 === "Scythe" ? 2 : 1;
       return { name: "Charged M2 · Ichor Spark", hits: [[(4.75 + 2.75 * ichor) * 1.8, n], [(2.375 + 1.375 * ichor) * 1.8, n]],
         types: null, weaponTypes: true, scalings: { Physical: 1, Air: 1 }, charge: 8 / (1 + 0.25 * ichor), guardbreak: true };
     }

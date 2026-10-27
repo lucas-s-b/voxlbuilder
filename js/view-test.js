@@ -46,9 +46,20 @@
   const tui = (() => {
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(UI_KEY)); } catch (e) { /* storage unavailable */ }
-    return { closed: new Set(saved && Array.isArray(saved.closed) ? saved.closed : ["enemy", "advanced"]), tab: (saved && saved.tab) || "seq", detail: (saved && saved.detail) || "" };
+    return { closed: new Set(saved && Array.isArray(saved.closed) ? saved.closed : ["enemy", "advanced"]), tab: (saved && saved.tab) || "seq",
+      detail: (saved && saved.detail) || "", mode: (saved && saved.mode) || "dps" };
   })();
-  const saveUi = () => { try { localStorage.setItem(UI_KEY, JSON.stringify({ closed: [...tui.closed], tab: tui.tab, detail: tui.detail })); } catch (e) { /* storage unavailable */ } };
+  const saveUi = () => { try { localStorage.setItem(UI_KEY, JSON.stringify({ closed: [...tui.closed], tab: tui.tab, detail: tui.detail, mode: tui.mode })); } catch (e) { /* storage unavailable */ } };
+
+  // The Test tab's four tabs. DPS, Debuff and Healing each run their own sequence; Tank is the enemy's sequence.
+  const MODES = [["dps", "DPS"], ["tank", "TANK"], ["debuff", "DEBUFF"], ["heal", "HEALING"]];
+  const LISTS = {
+    dps: { key: "seq", repeat: "seqRepeat", dur: "duration" },
+    debuff: { key: "dseq", repeat: "dseqRepeat", dur: "dduration" },
+    heal: { key: "hseq", repeat: "hseqRepeat", dur: "hduration" },
+  };
+  // the Test settings with one tab's sequence as the one to simulate
+  const withList = (s, mode) => { const L = LISTS[mode]; return { ...s, seq: s[L.key] || [], seqRepeat: !!s[L.repeat], duration: s[L.dur] || 30 }; };
 
   // "Holy 0.5 + Physical 0.5"
   const typesText = (types, none) => Object.entries(types || {}).filter(([, v]) => v > 0).map(([t, v]) => `${t} ${fmt(v, 2)}`).join(" + ") || none;
@@ -91,39 +102,46 @@
         ${left.length ? `<select class="sort mini" data-tsplit-add="${target}" aria-label="Add a damage type"><option value="">+ Type…</option>${left.map((t) => `<option>${t}</option>`).join("")}</select>` : ""}</div>`;
     };
 
-    // ---- 1. sequence
+    // ---- sequences: DPS, Debuff and Healing each edit their own list of steps
     const actions = actionList(A, ctx, atks, s);
     const act = Object.fromEntries(actions.map((x) => [x[0], x]));
-    const seq = Array.isArray(s.seq) ? s.seq : [];
-    const steps = seq.map((st, i) => {
-      const a = act[st.a];
-      const missing = !a;
-      return `<div class="seq-step${missing ? " missing" : ""}">
-        <span class="seq-num outline">${i + 1}</span>
-        <span class="seq-ico portrait sm">${a ? a[3] : ""}</span>
-        <span class="seq-name"><b>${esc(a ? a[1] : st.a)}</b><i>${esc(missing ? "Not in this build" : a[2])}</i></span>
-        <span class="seq-n">${st.a === "wait"
-          ? `<input class="num" type="number" data-seq-w="${i}" value="${st.w || 1}" step="0.5" min="0.1" max="60" aria-label="Seconds"><span class="muted">s</span>`
-          : `<span class="muted">×</span><input class="num" type="number" data-seq-n="${i}" value="${st.n || 1}" step="1" min="1" max="50" aria-label="Times">`}</span>
-        <span class="seq-btns">
-          <button class="mv" data-seq-move="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Move up">▲</button>
-          <button class="mv" data-seq-move="${i}" data-dir="1" ${i === seq.length - 1 ? "disabled" : ""} aria-label="Move down">▼</button>
-          <button class="mv del" data-seq-del="${i}" aria-label="Remove">✕</button>
-        </span></div>`;
-    }).join("");
-    const addBtns = actions.map(([k, name, , ico]) => `<button class="seq-add" data-seq-add="${k}" title="Add ${esc(name)}"><span class="seq-ico portrait sm">${ico}</span><span>${esc(name)}</span></button>`).join("");
-    const seqSection = `
-      <div class="seq-list">${steps || `<div class="seq-empty">No steps yet. Add attacks below in the order you use them.</div>`}</div>
+    const seqOf = (mode) => (Array.isArray(s[LISTS[mode].key]) ? s[LISTS[mode].key] : []);
+    const seqSummaryOf = (mode) => seqOf(mode).map((st) => (act[st.a] ? act[st.a][1] : st.a) + (st.a === "wait" ? ` ${st.w || 1}s` : st.n > 1 ? ` ×${st.n}` : "")).join(" → ") || "no steps";
+    const seqEditor = (mode, empty) => {
+      const L = LISTS[mode];
+      const seq = seqOf(mode);
+      const d = `data-list="${L.key}"`;
+      const steps = seq.map((st, i) => {
+        const a = act[st.a];
+        const missing = !a;
+        return `<div class="seq-step${missing ? " missing" : ""}">
+          <span class="seq-num outline">${i + 1}</span>
+          <span class="seq-ico portrait sm">${a ? a[3] : ""}</span>
+          <span class="seq-name"><b>${esc(a ? a[1] : st.a)}</b><i>${esc(missing ? "Not in this build" : a[2])}</i></span>
+          <span class="seq-n">${st.a === "wait"
+            ? `<input class="num" type="number" data-seq-w="${i}" ${d} value="${st.w || 1}" step="0.5" min="0.1" max="60" aria-label="Seconds"><span class="muted">s</span>`
+            : `<span class="muted">×</span><input class="num" type="number" data-seq-n="${i}" ${d} value="${st.n || 1}" step="1" min="1" max="50" aria-label="Times">`}</span>
+          <span class="seq-btns">
+            <button class="mv" data-seq-move="${i}" ${d} data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Move up">▲</button>
+            <button class="mv" data-seq-move="${i}" ${d} data-dir="1" ${i === seq.length - 1 ? "disabled" : ""} aria-label="Move down">▼</button>
+            <button class="mv del" data-seq-del="${i}" ${d} aria-label="Remove">✕</button>
+          </span></div>`;
+      }).join("");
+      const addBtns = actions.map(([k, name, , ico]) => `<button class="seq-add" data-seq-add="${k}" ${d} title="Add ${esc(name)}"><span class="seq-ico portrait sm">${ico}</span><span>${esc(name)}</span></button>`).join("");
+      return `
+      <div class="seq-list">${steps || `<div class="seq-empty">${empty}</div>`}</div>
       <div class="sub-h outline">ADD A STEP</div>
       <div class="seq-adds">${addBtns}</div>
       <div class="seq-mode">
-        ${setBtn("seqRepeat", "", "RUN ONCE", !s.seqRepeat, 'data-bool="0"')}
-        ${setBtn("seqRepeat", "1", "REPEAT FOR", !!s.seqRepeat, 'data-bool="1"')}
-        ${s.seqRepeat ? `${num("duration", s.duration, 'step="5" min="5" max="300"')}<span class="muted">seconds</span>` : ""}
+        ${setBtn(L.repeat, "", "RUN ONCE", !s[L.repeat], 'data-bool="0"')}
+        ${setBtn(L.repeat, "1", "REPEAT FOR", !!s[L.repeat], 'data-bool="1"')}
+        ${s[L.repeat] ? `${num(L.dur, s[L.dur], 'step="5" min="5" max="300"')}<span class="muted">seconds</span>` : ""}
       </div>
-      <div class="muted seq-help">${s.seqRepeat
+      <div class="muted seq-help">${s[L.repeat]
         ? "Loops your steps; anything still on cooldown is skipped that loop."
-        : "Runs your steps once, in order. A step still on cooldown waits for it."}</div>
+        : "Runs your steps once, in order. A step still on cooldown waits for it."}</div>`;
+    };
+    const seqSection = `${seqEditor("dps", "No steps yet. Add attacks below in the order you use them.")}
       <div class="opt-row"><span class="lab">Crits</span><span class="mode-tabs">${setBtn("crit", "avg", "AVERAGE", s.crit === "avg")}${setBtn("crit", "always", "ALWAYS", s.crit === "always")}${setBtn("crit", "never", "NEVER", s.crit === "never")}</span></div>
       ${byKey.special && byKey.special.specials.length > 1 ? `<div class="opt-row"><span class="lab">Special attack</span>${sel("spirit", byKey.special.specials, byKey.special.specialId)}</div>` : ""}
       <div class="sub-h outline">CUSTOM ATTACKS</div>
@@ -234,17 +252,24 @@
     };
     const onCount = selfSt.concat(targetSt).filter((id) => ctx.statuses[id].on).length + Object.keys(Dmg.DOTS).filter((k) => ctx.S.target[k]).length +
       FX().POTIONS.filter((p) => s.potions[p.id]).length + situational.filter((pk) => perkOn(s, pk)).length;
-    const seqSummary = seq.map((st) => (act[st.a] ? act[st.a][1] : st.a) + (st.a === "wait" ? ` ${st.w || 1}s` : st.n > 1 ? ` ×${st.n}` : "")).join(" → ") || "no steps";
 
     const prevSetup = A.$("viewTest").querySelector(".tv-setup");
     const keepTop = prevSetup ? prevSetup.scrollTop : 0;
+    const mode = LISTS[tui.mode] || tui.mode === "tank" ? tui.mode : "dps";
+    const buffsSec = sec("buffs", 2, "BUFFS", onCount ? `${onCount} on` : "none on", buffsSection);
+    const setup = {
+      dps: sec("seq", 1, "SEQUENCE", seqSummaryOf("dps"), seqSection) + buffsSec,
+      tank: sec("enemy", 1, "ENEMY", atkNow.name, enemySection) + buffsSec,
+      debuff: sec("dseq", 1, "DEBUFF SEQUENCE", seqSummaryOf("debuff"), seqEditor("debuff", "No steps yet. Add the attacks you debuff with.")) + buffsSec,
+      heal: sec("hseq", 1, "HEALING SEQUENCE", seqSummaryOf("heal"), seqEditor("heal", "No steps yet. Add the actions you heal with: lifesteal hits, heal arts or runes.")) + buffsSec,
+    }[mode];
     A.$("viewTest").innerHTML = `
+      <div class="mode-tabs test-modes" role="tablist" aria-label="Test">${MODES.map(([k, l]) =>
+        `<button class="mode-tab outline${mode === k ? " active" : ""}" data-test-mode="${k}" role="tab" aria-selected="${mode === k}">${l}</button>`).join("")}</div>
       <div class="tv-grid">
         <div class="tv-setup">
           ${!wpn.parts.length ? `<div class="cv-warn">No weapon set: using 1-Handed Sword moves with Physical damage. Build one in the CHARACTER tab.</div>` : ""}
-          ${sec("seq", 1, "SEQUENCE", seqSummary, seqSection)}
-          ${sec("buffs", 2, "BUFFS", onCount ? `${onCount} on` : "none on", buffsSection)}
-          ${sec("enemy", 3, "ENEMY", atkNow.name, enemySection)}
+          ${setup}
         </div>
         <div class="tv-results" id="testResults"></div>
       </div>`;
@@ -309,21 +334,30 @@
     const act = Object.fromEntries(actions.map((x) => [x[0], x]));
     const SUP = window.VoxlSupport;
     const sup = SUP.evaluate(ctx, mods, s, sim, Dmg);
-    const D = sup.defense, Hh = sup.healing, Sm = sup.summons;
+    const D = sup.defense, Sm = sup.summons;
+    const mode = LISTS[tui.mode] || tui.mode === "tank" ? tui.mode : "dps";
+    // the healing sequence, and the healing it produces
+    const sH = withList(s, "heal");
+    const simH = Dmg.simulate(ctx, mods, sH);
+    const Hh = SUP.evaluate(ctx, mods, sH, simH, Dmg).healing;
     const P = (id) => ctx.perks[id] || 0;
 
     // ---- sequence tab
     const total = Math.max(1e-9, sim.total);
-    const stepRows = (sim.steps || []).map((st) => {
+    // one row per step: when it ran, then a value (damage by default) and a share or note under it
+    const stepRowsOf = (simX, value) => (simX.steps || []).map((st) => {
       const a = act[st.a];
       const name = a ? a[1] : st.a;
       const when = st.t0 === null ? "not used" : `${fmt(st.t0, 2)}s → ${fmt(st.t1, 2)}s`;
       const extra = [st.n > 1 ? `×${st.n}` : "", st.waited ? `waited ${fmt(st.waited, 2)}s for cooldown` : "", st.skipped ? `skipped ${st.skipped}× on cooldown` : "", st.note].filter(Boolean).join(" · ");
-      return `<button class="seq-res" data-detail="${st.a}" ${st.a === "wait" ? "disabled" : ""}>
+      const [big, small] = st.a === "wait" ? ["—", ""] : value(st);
+      return `<button class="seq-res${value === dmgValue ? "" : " static"}" ${value === dmgValue ? `data-detail="${st.a}"` : ""} ${st.a === "wait" ? "disabled" : ""}>
         <span class="seq-num outline">${st.i + 1}</span><span class="seq-ico portrait sm">${a ? a[3] : ""}</span>
         <span class="seq-name"><b>${esc(name)}</b><i>${esc(when)}${extra ? " · " + esc(extra) : ""}</i></span>
-        <span class="seq-dmg"><b class="outline">${st.a === "wait" ? "—" : fmt(st.dmg, 0)}</b>${st.a === "wait" ? "" : `<i>${fmt((st.dmg / total) * 100, 0)}%</i>`}</span></button>`;
+        <span class="seq-dmg"><b class="outline">${big}</b>${small ? `<i>${small}</i>` : ""}</span></button>`;
     }).join("");
+    const dmgValue = (st) => [fmt(st.dmg, 0), `${fmt((st.dmg / total) * 100, 0)}%`];
+    const stepRows = stepRowsOf(sim, dmgValue);
     const dotTotal = sim.bySource.dot || 0;
     const dotRow = dotTotal > 0 ? `<div class="seq-res static"><span class="seq-num outline">+</span><span class="seq-ico portrait sm"><span class="seq-badge outline">☠</span></span>
         <span class="seq-name"><b>DoTs &amp; auras</b><i>${esc(Object.keys(Dmg.DOTS).filter((k) => ctx.S.target[k]).join(", ") || "auras")} for the whole ${fmt(sim.T, 2)}s</i></span>
@@ -350,7 +384,7 @@
         <div class="res-title outline">SURVIVAL <span class="muted">· ${esc(D.attack.name)} (${fmt(D.raw, 1)})</span></div>
         <div class="big-row">
           <div><span class="lab">TAKEN PER HIT</span><b class="big outline" style="color:#ff8a8a">${fmt(D.perHit, 2)}</b><span class="muted">${fmt(D.takenPct, 1)}% of the hit${Number.isFinite(D.hitsToDie) ? ` · dead in ${D.hitsToDie} hits` : ""}</span></div>
-          <div><span class="lab">TAKEN / HEALED PER S</span><b class="mid outline" style="color:#ffb27a">${fmt(D.perSec, 2)}</b><b class="mid outline" style="color:#6dff9a">${fmt(Hh.total, 2)}</b></div>
+          <div><span class="lab">TAKEN / HEALED PER S</span><b class="mid outline" style="color:#ffb27a">${fmt(D.perSec, 2)}</b><b class="mid outline" style="color:#6dff9a">${fmt(Hh.total, 2)}</b><span class="muted">healing from the Healing tab</span></div>
         </div>
         <div class="kv">
           <span>Max HP</span><b>${fmt(D.maxHp, 0)}</b>
@@ -360,7 +394,6 @@
           <span>DoTs on you</span><b>×${fmt(D.dotTaken, 3)}</b>
         </div>
         <details class="steps"><summary class="outline">HOW DAMAGE TAKEN IS WORKED OUT</summary>${factorRows}</details>
-        ${Hh.list.length ? `<div class="sub-h outline">HEALING</div>${Hh.list.map(([n, v]) => `<div class="step"><span>${esc(n)}</span><b>${fmt(v, 2)}/s</b></div>`).join("")}` : ""}
         ${SUP.GROUPS.summons.some(P) ? `<div class="sub-h outline">MINIONS</div>
         <div class="step"><span>${fmt(Sm.count, 0)} minion${Sm.count === 1 ? "" : "s"} · damage ×${fmt(Sm.dmgMult, 2)} · HP ${fmt(Sm.hp, 0)}</span><b>${fmt(Sm.dps, 1)} dmg/s</b></div>` : ""}
       </div>`;
@@ -386,21 +419,77 @@
         ${groups.attack.length ? `<div class="sub-h outline">ADD AN ATTACK (SPECIAL)</div>${chips(groups.attack)}` : ""}
         ${groups.none.length ? `<div class="sub-h outline">NOT SIMULATED</div>${chips(groups.none)}` : ""}</div>`;
 
-    const tab = ["seq", "detail", "survival", "perks"].includes(tui.tab) ? tui.tab : "seq";
-    const kpi = (id, lab, val, sub, color) => `<button class="kpi${tab === id ? " on" : ""}" data-test-tab="${id}" aria-pressed="${tab === id}">
+    // ---- healing tab
+    const healTab = `<div class="res-card">
+        <div class="res-title outline">HEALING <span class="muted">· your healing sequence over ${fmt(simH.T, 2)}s</span></div>
+        <div class="big-row">
+          <div><span class="lab">HEALED / S</span><b class="big outline" style="color:#6dff9a">${fmt(Hh.total, 2)}</b><span class="muted">vs ${fmt(D.perSec, 2)} taken / s</span></div>
+          <div><span class="lab">TOTAL HEALED</span><b class="mid outline" style="color:#6dff9a">${fmt(Hh.total * simH.T, 1)}</b><span class="muted">${fmt(((Hh.total * simH.T) / Math.max(1, D.maxHp)) * 100, 0)}% of your ${fmt(D.maxHp, 0)} HP</span></div>
+        </div>
+        ${Hh.list.length ? `<div class="sub-h outline">BY SOURCE</div>${Hh.list.map(([n, v, note]) => `<div class="step"><span>${esc(n)}${note ? ` <span class="muted">${esc(note)}</span>` : ""}</span><b>${fmt(v, 2)}/s · ${fmt(v * simH.T, 1)}</b></div>`).join("")}`
+          : `<div class="muted">Nothing in your build heals with this sequence. Lifesteal, healing perks, Regen and heal arts or runes show up here.</div>`}
+        <div class="sub-h outline">STEPS</div>
+        <div class="seq-results">${stepRowsOf(simH, (st) => [fmt(st.dmg, 0), "damage"]) || `<div class="muted">Add steps to your healing sequence on the left.</div>`}</div>
+        <div class="muted">Lifesteal and other on-hit healing comes from the damage these steps deal.</div>
+      </div>`;
+
+    // ---- debuff tab: expected applications of each debuff, per step and in total
+    let debuffTab = "";
+    if (mode === "debuff") {
+      const sD = withList(s, "debuff");
+      const simD = Dmg.simulate(ctx, mods, sD);
+      const P2 = (id) => ctx.perks[id] || 0;
+      const targetStatus = new Set(FX().STATUSES.filter((d) => d.side === "target").map((d) => d.name).concat(Object.keys(Dmg.DOTS)));
+      const appliedBy = (atk) => {
+        const out = {};
+        (atk && (atk.swings || [atk]) || []).forEach((a) => {
+          const r = a.hits && a.hits.length ? Dmg.hit(ctx, mods, sD, a, { rage: 0 }) : { hits: 0, crit: { p: 0 }, types: {} };
+          Object.entries(FX().APPLY).forEach(([k, f]) => { const n = f(ctx, a, r, P2, ctx.S); if (n > 1e-6) out[k] = (out[k] || 0) + n; });
+          (a.applies || []).filter((x) => targetStatus.has(x.status)).forEach((x) => { out[x.status] = (out[x.status] || 0) + 1; });
+        });
+        return out;
+      };
+      const totalsD = {};
+      const rows = stepRowsOf(simD, (st) => {
+        const ap = appliedBy(byKey[st.a]);
+        Object.entries(ap).forEach(([k, v]) => { totalsD[k] = (totalsD[k] || 0) + v * st.n; });
+        const txt = Object.entries(ap).map(([k, v]) => `${k} ${fmt(v, 2)}`).join(" · ");
+        return [txt ? fmt(Object.values(ap).reduce((q, v) => q + v, 0) * st.n, 2) : "0", txt ? `${txt} per use` : "no debuffs"];
+      });
+      const potency = (k) => (ctx.S.applied && ctx.S.applied[k] !== undefined ? ` · potency ${fmt(ctx.S.applied[k], 2)}` : "");
+      const can = Object.values(ctx.statuses).filter((st) => st.def.side === "target" && st.sources.length);
+      debuffTab = `<div class="res-card">
+        <div class="res-title outline">DEBUFFS <span class="muted">· your debuff sequence over ${fmt(simD.T, 2)}s</span></div>
+        ${Object.keys(totalsD).length ? Object.entries(totalsD).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
+          `<div class="step"><span><b>${esc(k)}</b> <span class="muted">${fmt(v / Math.max(1e-9, simD.T), 2)} per second${potency(k)}</span></span><b>${fmt(v, 2)} times</b></div>`).join("")
+          : `<div class="muted">These steps don't apply any debuffs with your build.</div>`}
+        <div class="sub-h outline">STEPS</div>
+        <div class="seq-results">${rows || `<div class="muted">Add steps to your debuff sequence on the left.</div>`}</div>
+        ${can.length ? `<div class="sub-h outline">DEBUFFS YOUR BUILD CAN APPLY</div><div class="chips">${can.map((st) => `<span class="chip" title="${esc(st.sources.map((x) => x[0]).join(", "))}">${esc(st.def.name)}</span>`).join("")}</div>` : ""}
+        <div class="muted">Chance-based applications are averaged, so a 55% chance counts as 0.55.</div>
+      </div>`;
+    }
+
+    const tab = ["seq", "detail", "perks"].includes(tui.tab) ? tui.tab : "seq";
+    const kpi = (id, lab, val, sub, color) => `<button class="kpi${mode === id ? " on" : ""}" data-test-mode="${id}" aria-pressed="${mode === id}">
       <span class="lab">${lab}</span><b class="outline" style="color:${color}">${val}</b><span class="kpi-sub">${sub}</span></button>`;
-    const one = byKey[detailKey] && byKey[detailKey].hits && byKey[detailKey].hits.length ? Dmg.hit(ctx, mods, s, byKey[detailKey], { rage: Dmg.ragePotency(ctx, false) }) : null;
+    const body = {
+      dps: `<div class="res-tabs mode-tabs">
+          ${[["seq", "SEQUENCE"], ["detail", "HIT DETAILS"], ["perks", "OTHER PERKS"]].map(([k, l]) => `<button class="mode-tab outline${tab === k ? " active" : ""}" data-test-tab="${k}">${l}</button>`).join("")}
+        </div>
+        <div class="tab-body">${tab === "seq" ? seqTab : tab === "detail" ? detailTab : perksTab}</div>`,
+      tank: `<div class="tab-body">${survivalTab}</div>`,
+      debuff: `<div class="tab-body">${debuffTab}</div>`,
+      heal: `<div class="tab-body">${healTab}</div>`,
+    }[mode];
     box.innerHTML = `
       <div class="kpis">
-        ${kpi("seq", "TOTAL", fmt(sim.total, 0), `in ${fmt(sim.T, 2)}s`, "#fff3dc")}
-        ${kpi("seq", "DPS", fmt(sim.avg), sim.repeat ? "over the fight" : "total ÷ time", "#6dff9a")}
-        ${kpi("detail", "ONE HIT", one ? fmt(one.expected) : "—", esc(act[detailKey] ? act[detailKey][1] : ""), "#ffd84a")}
-        ${kpi("survival", "TAKEN / S", fmt(D.perSec, 1), `healed ${fmt(Hh.total, 1)}/s`, "#ff9a9a")}
+        ${kpi("dps", "TOTAL", fmt(sim.total, 0), `in ${fmt(sim.T, 2)}s`, "#fff3dc")}
+        ${kpi("dps", "DPS", fmt(sim.avg), sim.repeat ? "over the fight" : "total ÷ time", "#6dff9a")}
+        ${kpi("tank", "TAKEN/S", fmt(D.perSec, 1), esc(D.attack.name), "#ff9a9a")}
+        ${kpi("heal", "HEALED/S", fmt(Hh.total, 1), `${fmt(Hh.total * simH.T, 0)} in ${fmt(simH.T, 1)}s`, "#6dff9a")}
       </div>
-      <div class="res-tabs mode-tabs">
-        ${[["seq", "SEQUENCE"], ["detail", "HIT DETAILS"], ["survival", "SURVIVAL"], ["perks", "OTHER PERKS"]].map(([k, l]) => `<button class="mode-tab outline${tab === k ? " active" : ""}" data-test-tab="${k}">${l}</button>`).join("")}
-      </div>
-      <div class="tab-body">${tab === "seq" ? seqTab : tab === "detail" ? detailTab : tab === "survival" ? survivalTab : perksTab}</div>`;
+      ${body}`;
   }
 
   function chart(sim) {
@@ -496,9 +585,10 @@
       if (el.dataset.seqN !== undefined || el.dataset.seqW !== undefined) {
         const i = +(el.dataset.seqN !== undefined ? el.dataset.seqN : el.dataset.seqW);
         const v = parseFloat(el.value);
-        if (!Number.isFinite(v) || !test().seq[i]) return;
-        if (el.dataset.seqN !== undefined) test().seq[i].n = Math.max(1, Math.min(50, Math.round(v)));
-        else test().seq[i].w = Math.max(0.1, Math.min(60, v));
+        const list = test()[el.dataset.list || "seq"] || [];
+        if (!Number.isFinite(v) || !list[i]) return;
+        if (el.dataset.seqN !== undefined) list[i].n = Math.max(1, Math.min(50, Math.round(v)));
+        else list[i].w = Math.max(0.1, Math.min(60, v));
         return changed(false);
       }
       const p = el.closest("[data-path]");
@@ -529,6 +619,11 @@
         saveUi();
         return renderTest(A);
       }
+      if ((el = t("[data-test-mode]"))) {
+        tui.mode = el.dataset.testMode;
+        saveUi();
+        return renderTest(A);
+      }
       if ((el = t("[data-test-tab]"))) {
         tui.tab = el.dataset.testTab;
         saveUi();
@@ -547,7 +642,7 @@
       if ((el = t("[data-custom-del]"))) {
         const id = el.dataset.customDel;
         test().customs = test().customs.filter((c) => c.id !== id);
-        test().seq = (test().seq || []).filter((st) => st.a !== "custom:" + id);
+        ["seq", "dseq", "hseq"].forEach((key) => { test()[key] = (test()[key] || []).filter((st) => st.a !== "custom:" + id); });
         return changed(true);
       }
       if ((el = t("[data-tsplit-del]"))) { const ty = typesOf(el.dataset.tsplitDel); if (ty) delete ty[el.dataset.type]; return changed(true); }
@@ -564,15 +659,16 @@
         return changed(true);
       }
       if ((el = t("[data-seq-add]"))) {
-        const k = el.dataset.seqAdd, seq = test().seq || (test().seq = []);
+        const key = el.dataset.list || "seq";
+        const k = el.dataset.seqAdd, seq = test()[key] || (test()[key] = []);
         const last = seq[seq.length - 1];
         if (last && last.a === k && k !== "wait") last.n = Math.min(50, (last.n || 1) + 1); // adding the same action again stacks it
         else if (seq.length < 30) seq.push(k === "wait" ? { a: "wait", n: 1, w: 1 } : { a: k, n: 1 });
         return changed(true);
       }
-      if ((el = t("[data-seq-del]"))) { test().seq.splice(+el.dataset.seqDel, 1); return changed(true); }
+      if ((el = t("[data-seq-del]"))) { test()[el.dataset.list || "seq"].splice(+el.dataset.seqDel, 1); return changed(true); }
       if ((el = t("[data-seq-move]")) && !el.disabled) {
-        const seq = test().seq, i = +el.dataset.seqMove, j = i + +el.dataset.dir;
+        const seq = test()[el.dataset.list || "seq"], i = +el.dataset.seqMove, j = i + +el.dataset.dir;
         if (j < 0 || j >= seq.length) return;
         [seq[i], seq[j]] = [seq[j], seq[i]];
         return changed(true);

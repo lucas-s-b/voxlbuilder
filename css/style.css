@@ -985,3 +985,7 @@ a { color: #8fd3ff; }
 .part-img.portrait img { width: 56px; height: 56px; }
 .forge-thumb.portrait img { width: 46px; height: 46px; }
 .pc-ico.portrait { padding: 2px; }
+
+/* Test tab: DPS / Tank / Debuff / Healing */
+.test-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; }
+.test-modes .mode-tab { min-width: 0; text-align: center; padding-left: 4px; padding-right: 4px; }

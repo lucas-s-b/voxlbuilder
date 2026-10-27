@@ -129,7 +129,7 @@
     if (!t || typeof t !== "object") return d;
     const out = { ...d };
     // swing time, extra attack speed, damage bonus, spirit energy and cast-time overrides no longer have a setting: defaults
-    ["attack", "crit", "rotMode", "duration", "seqRepeat", "enemy"].forEach((k) => {
+    ["attack", "crit", "rotMode", "duration", "seqRepeat", "dseqRepeat", "dduration", "hseqRepeat", "hduration", "enemy"].forEach((k) => {
       if (t[k] !== undefined && typeof t[k] === typeof d[k]) out[k] = t[k];
     });
     if (!["time", "count"].includes(out.rotMode)) out.rotMode = "time";
@@ -161,12 +161,15 @@
       .filter((c) => c && /^[a-z0-9]{1,8}$/i.test(c.id))
       .map((c) => ({ id: c.id, name: String(c.name || "Custom hit").slice(0, 30), dmg: clamp(+c.dmg || 0, 0, 1e6), hits: clamp(Math.round(+c.hits || 1), 1, 50), types: cleanTypes(c.types) }));
     const customIds = out.customs.map((c) => "custom:" + c.id);
-    if (Array.isArray(t.seq)) {
-      out.seq = t.seq.slice(0, 30).filter((x) => x).map((x) => ({ ...x, a: x.a === "custom" && customIds.length ? customIds[0] : x.a }))
+    // the DPS, Debuff and Healing sequences
+    ["seq", "dseq", "hseq"].forEach((key) => {
+      if (!Array.isArray(t[key])) return;
+      out[key] = t[key].slice(0, 30).filter((x) => x).map((x) => ({ ...x, a: x.a === "custom" && customIds.length ? customIds[0] : x.a }))
         .filter((x) => (Dmg.SEQ_ACTIONS.includes(x.a) && x.a !== "custom") || customIds.includes(x.a)).map((x) => ({
           a: x.a, n: clamp(Math.round(+x.n || 1), 1, 50), ...(x.a === "wait" ? { w: clamp(+x.w || 1, 0.1, 60) } : {}),
         }));
-    }
+    });
+    ["duration", "dduration", "hduration"].forEach((k) => { out[k] = clamp(+out[k] || 30, 5, 300); });
     if (out.enemy && !(window.VOXL_DATA.enemies || []).some((e) => e.id === out.enemy)) out.enemy = "";
     // who hits you: the chosen enemy (the training dummy uses custom hits), its attack sequence, frequency and blocks
     const SUP = window.VoxlSupport;

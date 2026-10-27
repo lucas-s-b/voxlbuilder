@@ -667,6 +667,7 @@
       if (p("whirlwind") && AR(atk)) n += 1;
       if (p("gorecast") && ART(atk)) n += 1;
       if (p("winter-woof-spirit") && W(atk)) n += 1;
+      if (p("ichor-spark") && atk.key === "m2c") n += atk.hits[1][1]; // the charged Ranged Slash
       if (["cacitrops-rune", "sanguine-bolt-rune"].includes(atk.runeId) || ["caci-spirit", "gremlin-spirit"].includes(atk.spiritId)) n += r.hits;
       return n;
     },

@@ -28,6 +28,9 @@
     // rotation: "time" = everything enabled on cooldown for `duration` seconds; "count" = each enabled action `count` times
     // sequence: the user's own list of steps ({a: action, n: times, w: seconds for "wait"}), run once or repeated
     seq: [{ a: "m1", n: 3 }], seqRepeat: false,
+    // the Debuff and Healing tabs each run their own sequence (same step format)
+    dseq: [{ a: "m1", n: 1 }], dseqRepeat: false, dduration: 30,
+    hseq: [{ a: "m1", n: 3 }], hseqRepeat: false, hduration: 30,
     enemy: "", // "" = training dummy, else a wiki enemy id: sets the target's defenses and who hits you
     rotMode: "time", duration: 30, spiritMax: 100,
     rotOrder: ["rune", "drac", "art", "special", "custom", "m1"], // priority, top first; "m1" = the M1 combo (+ its M2)

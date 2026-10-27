@@ -22,20 +22,25 @@
   };
 
   // ------------------------------------------------------------ pixel icons
+  // One <rect> per horizontal run of the same color.
   function pix(rows, colors) {
     let rects = "";
-    rows.forEach((r, y) => [...r].forEach((ch, x) => {
-      if (colors[ch]) rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${colors[ch]}"/>`;
-    }));
+    rows.forEach((r, y) => {
+      for (let x = 0; x < r.length;) {
+        let end = x + 1;
+        while (end < r.length && r[end] === r[x]) end++;
+        if (colors[r[x]]) rects += `<rect x="${x}" y="${y}" width="${end - x}" height="1" fill="${colors[r[x]]}"/>`;
+        x = end;
+      }
+    });
     return `<svg viewBox="0 0 ${rows[0].length} ${rows.length}" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${rects}</svg>`;
   }
-  const GHOST = {
-    head: ["....XXXX....", "..XXXXXXXX..", ".XXXXXXXXXX.", ".XXXXXXXXXX.", "XXXXXXXXXXXX", "XXX......XXX", "XXX.XXXX.XXX", "XXX.XXXX.XXX", "XXX..XX..XXX", "XXX......XXX", ".XX......XX.", "............"],
-    chest: ["..XX....XX..", ".XXXX..XXXX.", "XXXXXXXXXXXX", "XXXXXXXXXXXX", "XX.XXXXXX.XX", "XX.XXXXXX.XX", "...XXXXXX...", "...XXXXXX...", "...XXXXXX...", "...XXXXXX...", "...XXXXXX...", "............"],
-    legs: [".XXXXXXXXXX.", ".XXXXXXXXXX.", ".XXXXXXXXXX.", ".XXXX..XXXX.", ".XXXX..XXXX.", ".XXXX..XXXX.", ".XXXX..XXXX.", ".XXXX..XXXX.", ".XXXX..XXXX.", "XXXXX..XXXXX", "XXXXX..XXXXX", "............"],
-    ring: ["....XXXX....", "...XXXXXX...", "....XXXX....", "..XXX..XXX..", ".XX......XX.", "XX........XX", "XX........XX", "XX........XX", ".XX......XX.", "..XXX..XXX..", "....XXXX....", "............"],
-    rune: ["...XXXXXX...", "..XXXXXXXX..", ".XXXX..XXXX.", ".XXX.XX.XXX.", ".XXX.XX.XXX.", ".XXXX..XXXX.", ".XXXXX.XXXX.", ".XXXX.XXXXX.", ".XXXXX.XXXX.", ".XXXXXXXXXX.", "..XXXXXXXX..", "............"],
-  };
+
+  // In-game equipment slots, cut 1:1 from the game (assets/img/slot-*.png): frame, corner knots, bottom shadow and
+  // the slot's silhouette while it's empty. They're a dark tint over the sand panel, like in game.
+  const slotArt = (slot, empty) =>
+    `<img src="assets/img/${empty ? "slot-" + slot : "slot-frame"}.png" alt="" draggable="false">`;
+
   const TAB_ICONS = {
     stats: pix(["............", ".........XX.", ".........XX.", "......XX.XX.", "......XX.XX.", "...XX.XX.XX.", "...XX.XX.XX.", "XX.XX.XX.XX.", "XX.XX.XX.XX.", "XX.XX.XX.XX.", "XXXXXXXXXXXX", "............"], { X: "#1b1108" }),
     perks: pix([".....XX.....", ".....XX.....", "....XYYX....", "XXXXXYYXXXXX", ".XXYYYYYYXX.", "..XXYYYYXX..", "...XYYYYX...", "..XXYXXYXX..", "..XXX..XXX..", ".XX......XX.", "............", "............"], { X: "#1b1108", Y: "#ffd84a" }),
@@ -197,6 +202,12 @@
   const build = () => store.loadouts[store.active];
   const totalsOf = (b) => C.buildTotals(b, itemById, M.extraSources(b));
   const target = () => (ui.mode === "inf" ? build().inf[ui.slot] : build().slots[ui.slot]);
+  // The rune infusion slot only exists with the Draconic guild; it holds the draconic rune (an ability, not an item).
+  const canInfuse = (slot) => C.INFUSABLE.includes(slot) || (slot === "rune" && !!M.draconic(build()));
+  const isDracInf = () => ui.mode === "inf" && ui.slot === "rune" && !!M.draconic(build());
+  const dracId = (ability) => "drac:" + ability.id;
+  // id of whatever sits in the slot being edited
+  const currentId = () => (isDracInf() ? dracId(M.draconic(build()).ability) : (target() || {}).id);
 
   let saveSeq = 0;
   function save() {
@@ -347,39 +358,45 @@
   // ------------------------------------------------------------ rendering
   function renderTop() {
     const b = build();
-    const filled = Object.keys(b.slots).length + Object.keys(b.inf).length;
-    $("equipCount").textContent = filled + "/9";
+    const drac = M.draconic(b) ? 1 : 0;
+    const filled = Object.keys(b.slots).length + Object.keys(b.inf).length + drac;
+    $("equipCount").textContent = filled + "/" + (9 + drac);
     $("buildNameBtn").textContent = b.name || "Unnamed";
     $("charLevelLabel").textContent = b.level;
     $("dataDate").textContent = "data scraped " + D.scraped;
   }
 
-  function renderCross() {
+  function slotHTML(slot, inf) {
     const b = build();
-    $("cross").innerHTML = C.SLOTS.map((slot) => {
-      const s = b.slots[slot];
-      const item = s && itemById[s.id];
-      const frames = item ? framesHTML(s.ench) : "";
-      const sel = ui.slot === slot && ui.mode === "item" ? " selected" : "";
-      return `<div class="cell cell-${slot}">
-        <button class="slot${frames ? " enchanted" : ""}${sel}" data-slot="${slot}" title="${esc(C.SLOT_NAMES[slot])}${item ? ": " + esc(item.name) : " (empty)"}">
-          <span class="slot-inner">${item ? img(item.image, item.name) : `<span class="ghost">${pix(GHOST[slot], { X: "#1a1007" })}</span>`}</span>
-          ${frames}
-          ${item && s.lvl ? `<span class="slot-lvl outline">+${s.lvl}</span>` : ""}
-        </button></div>`;
-    }).join("");
+    const s = inf ? b.inf[slot] : b.slots[slot];
+    const item = s && itemById[s.id];
+    const frames = item && !inf ? framesHTML(s.ench) : "";
+    const sel = ui.slot === slot && (ui.mode === "inf") === inf ? " selected" : "";
+    const title = C.SLOT_NAMES[slot] + (inf ? " infusion" : "") + (item ? ": " + item.name : " (empty)");
+    return `<div class="cell cell-${slot}">
+      <button class="slot${frames ? " enchanted" : ""}${sel}" ${inf ? "data-inf" : "data-slot"}="${slot}" title="${esc(title)}">
+        ${frames ? "" : `<span class="slot-art">${slotArt(slot, !item)}</span>`}
+        ${item ? `<span class="slot-inner">${img(item.image, item.name)}</span>` : ""}
+        ${frames}
+        ${item && s.lvl ? `<span class="slot-lvl outline">+${s.lvl}</span>` : ""}
+      </button></div>`;
+  }
+
+  function renderCross() {
+    $("cross").innerHTML = C.SLOTS.map((slot) => slotHTML(slot, false)).join("");
     renderInfusions();
   }
 
+  // Same cross as the equipment, one infusion per piece; the rune spot only appears with the Draconic guild.
   function renderInfusions() {
-    const b = build();
-    $("infusions").innerHTML = C.INFUSABLE.map((slot) => {
-      const fi = b.inf[slot];
-      const item = fi && itemById[fi.id];
-      const sel = ui.slot === slot && ui.mode === "inf" ? " selected" : "";
-      return `<button class="inf-slot${sel}${item ? " filled" : ""}" data-inf="${slot}" title="${esc(C.SLOT_NAMES[slot])} infusion${item ? ": " + esc(item.name) : " (empty)"}">
-        ${item ? img(item.image, item.name) : `<span class="ghost">${pix(GHOST[slot], { X: "#1a1007" })}</span>`}
-        ${item && fi.lvl ? `<span class="inf-lvl outline">+${fi.lvl}</span>` : ""}</button>`;
+    const drac = M.draconic(build());
+    $("infusions").innerHTML = C.SLOTS.map((slot) => {
+      if (slot !== "rune") return slotHTML(slot, true);
+      if (!drac) return "";
+      const sel = ui.slot === "rune" && ui.mode === "inf" ? " selected" : "";
+      return `<div class="cell cell-rune"><button class="slot drac${sel}" data-inf="rune" title="Rune infusion (Draconic): ${esc(drac.ability.name)}">
+        <span class="slot-art">${slotArt("rune", false)}</span>
+        <span class="slot-inner">${img("guild-draconic.png", drac.ability.name)}</span></button></div>`;
     }).join("");
   }
 
@@ -389,13 +406,24 @@
   }
 
   function renderMidHead() {
-    $("slotTitle").textContent = (ui.mode === "inf" ? C.SLOT_NAMES[ui.slot] + " INFUSION" : C.SLOT_NAMES[ui.slot]).toUpperCase();
-    $("modeTabs").innerHTML = C.INFUSABLE.includes(ui.slot)
+    if (ui.mode === "inf" && !canInfuse(ui.slot)) ui.mode = "item"; // e.g. left the Draconic guild while on the rune infusion
+    $("slotTitle").textContent = (isDracInf() ? "RUNE INFUSION · DRACONIC" : ui.mode === "inf" ? C.SLOT_NAMES[ui.slot] + " INFUSION" : C.SLOT_NAMES[ui.slot]).toUpperCase();
+    $("modeTabs").innerHTML = canInfuse(ui.slot)
       ? `<button class="mode-tab outline${ui.mode === "item" ? " active" : ""}" data-mode="item">EQUIPPED</button><button class="mode-tab outline${ui.mode === "inf" ? " active" : ""}" data-mode="inf">INFUSION</button>`
       : "";
   }
 
   function renderForge() {
+    if (isDracInf()) {
+      const dr = M.draconic(build());
+      const colorText = dr.blooded ? (dr.ability.id === "infusion" ? M.DRACONIC.infusion[dr.color] : M.DRACONIC.attack[dr.color].text) : "Not Dragon Blooded: Physical damage, no color bonus.";
+      $("forge").innerHTML = `
+        <div class="forge-thumb">${img("guild-draconic.png", dr.ability.name)}</div>
+        <div class="forge-name"><span class="outline" style="color:#ff9a6a">${esc(dr.ability.name.toUpperCase())}</span></div>
+        <div class="forge-note">${esc(dr.ability.text)} · ${dr.ability.cooldown}s cooldown</div>
+        <div class="forge-note">${esc(dr.blooded ? dr.color + ": " : "")}${esc(colorText)} Pick another draconic rune below; ranks unlock more.</div>`;
+      return;
+    }
     const t = target();
     const item = t && itemById[t.id];
     const isInf = ui.mode === "inf";
@@ -426,7 +454,7 @@
   }
 
   function slotItems() {
-    return D.items.filter((i) => i.slot === ui.slot);
+    return isDracInf() ? [] : D.items.filter((i) => i.slot === ui.slot);
   }
 
   function renderSortOptions() {
@@ -437,8 +465,26 @@
     $("sortStat").innerHTML = `<option value="">Sort: A–Z</option>` + opts.map((k) => `<option value="${esc(k)}"${ui.sort === k ? " selected" : ""}>${esc(k)}</option>`).join("");
   }
 
+  function renderDracGrid(q) {
+    const dr = M.draconic(build());
+    const list = M.DRACONIC.abilities.filter((x) => !q || x.name.toLowerCase().includes(q));
+    $("itemGrid").innerHTML = list.length ? list.map((x) => {
+      const id = dracId(x), locked = x.rank > dr.rank;
+      return `<button class="tile${ui.selected === id ? " selected" : ""}${locked ? " locked" : ""}" data-item="${id}" role="option" aria-selected="${ui.selected === id}"${locked ? ` title="Unlocked at Draconic rank ${x.rank}"` : ""}>
+        ${dr.ability.id === x.id ? `<span class="badge eq outline">E</span>` : ""}
+        ${locked ? `<span class="badge fav outline" style="color:#c9a8ff">R${x.rank}</span>` : ""}
+        ${img("guild-draconic.png", x.name)}<span class="tname">${esc(x.name)}</span></button>`;
+    }).join("") : `<div class="grid-empty outline">NO RUNES FOUND</div>`;
+  }
+
   function renderGrid() {
     const q = ui.search.trim().toLowerCase();
+    if (isDracInf()) {
+      renderDracGrid(q);
+      $("favOnly").setAttribute("aria-pressed", String(ui.favOnly));
+      updateActionButtons();
+      return;
+    }
     const fav = new Set(store.favorites);
     const t = target();
     let list = slotItems().filter((i) => {
@@ -467,8 +513,8 @@
 
   function updateActionButtons() {
     const t = target();
-    $("equipBtn").disabled = !ui.selected || (t && t.id === ui.selected);
-    $("favBtn").disabled = !ui.selected && !t;
+    $("equipBtn").disabled = !ui.selected || ui.selected === currentId();
+    $("favBtn").disabled = isDracInf() || (!ui.selected && !t);
     $("destroyBtn").disabled = !t;
     const favId = ui.selected || (t && t.id);
     $("favBtn").textContent = favId && store.favorites.includes(favId) ? "UNFAVORITE" : "FAVORITE";
@@ -539,16 +585,22 @@
       return;
     }
     const t = target();
-    let id = ui.hover || ui.selected || (t && t.id);
+    let id = ui.hover || ui.selected || currentId();
     let fromSlot = null;
     if (ui.hoverSlot) {
       const hs = ui.hoverSlot;
+      const drac = hs.inf && hs.slot === "rune" && M.draconic(build());
       const s = hs.inf ? build().inf[hs.slot] : build().slots[hs.slot];
-      if (s) { id = s.id; fromSlot = { ...s, inf: hs.inf }; }
+      if (drac) id = dracId(drac.ability);
+      else if (s) { id = s.id; fromSlot = { ...s, inf: hs.inf }; }
+    }
+    if (id && id.startsWith("drac:")) {
+      box.innerHTML = dracDesc(id);
+      return;
     }
     const item = id && itemById[id];
     if (!item) {
-      box.innerHTML = `<div class="d-hint">Click a slot on the left, pick an item from the list and press <b>EQUIP</b> (or double-click). Use the <b>INFUSIONS</b> row under the slots to set infusions. Hover anything to see its stats here.</div>`;
+      box.innerHTML = `<div class="d-hint">Click a slot on the left, pick an item from the list and press <b>EQUIP</b> (or double-click). The <b>INFUSIONS</b> cross beside it holds each piece's infusion. Hover anything to see its stats here.</div>`;
       return;
     }
     // Preview with the level/enchants of whatever is being edited.
@@ -567,6 +619,19 @@
       ${item.details && item.details.length ? `<ul class="d-list">${item.details.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
       ${item.obtain && item.obtain.length ? `<div class="d-sub" style="margin-top:8px">Obtain: ${esc(item.obtain.join(" · "))}</div>` : ""}
       <div class="d-sub"><a href="https://voxlpedia.miraheze.org/wiki/${encodeURIComponent(item.page.replace(/ /g, "_"))}" target="_blank" rel="noopener">Open on wiki ↗</a></div>`;
+  }
+
+  function dracDesc(id) {
+    const dr = M.draconic(build());
+    const x = M.DRACONIC.abilities.find((a) => dracId(a) === id);
+    if (!dr || !x) return "";
+    const colorText = !dr.blooded ? "Not Dragon Blooded: Physical damage, no color bonus." : x.id === "infusion" ? M.DRACONIC.infusion[dr.color] : M.DRACONIC.attack[dr.color].text;
+    return `<div class="d-name"><span class="outline" style="color:#ff9a6a">${esc(x.name)}</span></div>
+      <div class="d-sub">Draconic rune · extra rune key · rank ${x.rank}${x.rank > dr.rank ? " (locked at your rank)" : ""}</div>
+      <div class="d-stat outline" style="color:#ffe9a8">${x.cooldown}s cooldown</div>
+      <div class="d-perk">${esc(x.text)}</div>
+      <div class="d-perk"><b class="outline">${esc(dr.blooded ? dr.color : "Physical")}:</b> ${esc(colorText)}</div>
+      <div class="d-sub" style="margin-top:8px">The Dragon Blooded color is picked with the guild in the Character tab.</div>`;
   }
 
   function renderAll() {
@@ -633,7 +698,7 @@
       $("search").value = "";
     }
     ui.slot = slot;
-    ui.mode = mode === "inf" && C.INFUSABLE.includes(slot) ? "inf" : "item";
+    ui.mode = mode === "inf" && canInfuse(slot) ? "inf" : "item";
     ui.selected = null;
     renderCross();
     renderMidHead();
@@ -645,9 +710,19 @@
   }
 
   function equip(id) {
+    const b = build();
+    if (isDracInf()) {
+      const dr = M.draconic(b);
+      const x = M.DRACONIC.abilities.find((a) => dracId(a) === id);
+      if (!x) return;
+      if (x.rank > dr.rank) return toast(`${x.name} unlocks at Draconic rank ${x.rank}`);
+      snapshot();
+      b.guild.ability = x.id;
+      ui.selected = null;
+      return commit();
+    }
     const item = itemById[id];
     if (!item || item.slot !== ui.slot) return;
-    const b = build();
     snapshot();
     if (ui.mode === "inf") {
       const prev = b.inf[ui.slot];

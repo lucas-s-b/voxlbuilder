@@ -681,22 +681,32 @@
     return { ...a, overridden: true, cooldown: artCooldown(ctx, mods, a), note: art.baseText };
   }
 
-  // Holding RMB. Ichor Spark works with every weapon, even with RMB-changing perks (Ichor Spark page): at full charge,
-  // after 8 / (1 + 0.25 × amount) s sped up by attack speed, it fires a Swipe (4.75 + 2.75 × amount) and a Ranged
-  // Slash (2.375 + 1.375 × amount), both ×1.8, weapon damage types, 1.0 Physical and Air scaling. Otherwise the
-  // Lance and the Rifle have a held M2 (Lance 6.8 → 20, Rifle 17 → 45.3; the wiki gives no charge time).
-  // On the Scythe both hit twice: an in-game test of a Lord Vaen scythe build (about 8k per charged attack) matched
-  // 2 hits, not 1 (the wiki gives the damage of one hit).
-  function chargedM2(ctx, f) {
+  // Holding RMB charges the M2; each M2 step of a sequence has a charge from 0 (tapped) to 1 (full charge).
+  // Ichor Spark works with every weapon, even with RMB-changing perks (Ichor Spark page): charging replaces the M2 with a
+  // Swipe (4.75 + 2.75 × amount), plus a Ranged Slash (2.375 + 1.375 × amount) once the charge bonus reaches 30%. Both
+  // get up to +80% from charging, use the weapon's damage types and 1.0 Physical and Air scaling, and full charge takes
+  // 8 / (1 + 0.25 × amount) s, sped up by attack speed. On the Scythe both hit twice: an in-game test of a Lord Vaen
+  // scythe build (about 8k per full charge) matched 2 hits; the wiki gives one. Without Ichor Spark, the Lance (6.8 → 20)
+  // and the Rifle (17 → 45.3) have a held M2; the wiki gives no charge time for them.
+  // Returns null or {max: strongest multiplier, time: seconds to full charge at 1.0 speed, note, at(charge) → attack}.
+  function chargeM2(ctx) {
+    const f = ctx.form;
+    const base = { key: "m2", kind: "m2", form: f.m2, finisher: true, chain: f.m1Moves.length + 1 };
+    const pct = (c) => Math.round(c * 100) + "% charge";
     const ichor = perk(ctx, "ichor-spark");
     if (ichor) {
-      const n = f.m2 === "Scythe" ? 2 : 1;
-      return { name: "Charged M2 · Ichor Spark", hits: [[(4.75 + 2.75 * ichor) * 1.8, n], [(2.375 + 1.375 * ichor) * 1.8, n]],
-        types: null, weaponTypes: true, scalings: { Physical: 1, Air: 1 }, charge: 8 / (1 + 0.25 * ichor), guardbreak: true };
+      const n = f.m2 === "Scythe" ? 2 : 1, swipe = 4.75 + 2.75 * ichor, slash = 2.375 + 1.375 * ichor, time = 8 / (1 + 0.25 * ichor);
+      return { max: 1.8, time, note: "Ichor Spark Swipe, plus the Ranged Slash from 30% charge bonus", at: (c) => {
+        const m = 1 + 0.8 * c, slashes = 0.8 * c >= 0.3 - 1e-9 ? n : 0;
+        return { ...base, name: `M2 · Ichor Spark, ${pct(c)}`, hits: [[swipe * m, n], ...(slashes ? [[slash * m, n]] : [])], types: null, weaponTypes: true,
+          scalings: { Physical: 1, Air: 1 }, guardbreak: true, ichorSlash: slashes, charge: c, chargeTime: time };
+      } };
     }
-    if (f.m2 === "Lance") return { name: "Charged M2 · Lance", hits: [[20, 1]], types: null, scalings: null, weaponTypes: true, charge: 1.5, chargeNote: "charge time estimated" };
-    if (f.m2 === "Rifle") return { name: "Charged M2 · Rifle", hits: [[45.3, 1]], types: null, scalings: null, weaponTypes: true, charge: 2, chargeNote: "charge time estimated" };
-    return null;
+    const held = { Lance: [6.8, 20, 1.5], Rifle: [17, 45.3, 2] }[f.m2];
+    if (!held) return null;
+    const [lo, hi, time] = held;
+    return { max: hi / lo, time, note: "charge time estimated", at: (c) => ({ ...base, name: `M2 · ${f.m2}, ${pct(c)}`, hits: [[lo + (hi - lo) * c, 1]],
+      types: null, scalings: null, weaponTypes: true, charge: c, chargeTime: time, chargeNote: "charge time estimated" }) };
   }
 
   function attacks(ctx, mods, s) {
@@ -711,8 +721,6 @@
     list.push(m2o
       ? { key: "m2", kind: "m2", form: f.m2, name: `M2 · ${m2o.name}`, hits: m2o.hits, types: m2o.types, scalings: m2o.scalings, finisher: true, chain: f.m1Moves.length + 1 }
       : { key: "m2", kind: "m2", form: f.m2, name: `M2 · ${f.m2}`, hits: f.m2Moves, types: null, scalings: null, finisher: true, chain: f.m1Moves.length + 1, weaponTypes: true });
-    const charged = chargedM2(ctx, f);
-    if (charged) list.push({ key: "m2c", kind: "m2", form: f.m2, finisher: true, chain: f.m1Moves.length + 1, ...charged });
     if (ctx.wpn.art) list.push(artAttack(ctx, mods, ctx.wpn.art));
     if (ctx.rune) {
       const ra = ctx.rune.attack;
@@ -803,7 +811,7 @@
     let def, speed;
     if (atk.kind === "art") { def = ART_TIMING[atk.artId] || { cast: 1, active: 1 }; speed = artSpeed(ctx, mods, s, atk); }
     else if (atk.key === "rune" || atk.key === "drac") { def = { cast: 0.5, active: 0.5 }; speed = 1; }
-    else if (atk.charge) { const c = atk.charge + (+s.swingTime || 0.5); def = { cast: c, active: c, note: `${atk.charge.toFixed(1)}s to fully charge${atk.chargeNote ? " (" + atk.chargeNote + ")" : ""}` }; speed = as.mult; }
+    else if (atk.chargeTime) { const c = (+s.swingTime || 0.5) + atk.charge * atk.chargeTime; def = { cast: c, active: c, note: `${(atk.charge * atk.chargeTime).toFixed(1)}s of charging${atk.chargeNote ? " (" + atk.chargeNote + ")" : ""}` }; speed = as.mult; }
     else { def = { cast: +s.swingTime || 0.5, active: +s.swingTime || 0.5 }; speed = as.mult; }
     const baseCast = over.cast > 0 ? +over.cast : def.cast;
     const baseActive = Math.max(baseCast, over.active > 0 ? +over.active : Math.max(def.active, baseCast));
@@ -867,7 +875,7 @@
   // Only one action at a time: each locks you for its cast time. Hits of a move-stackable action (active > cast)
   // keep landing while you do other things. Cooldown actions go first when ready; M1 combos (each followed by an M2
   // when both are on) fill the gaps. With nothing to fill, the timeline waits for the next cooldown.
-  const SEQ_ACTIONS = ["m1", "m2", "m2c", "art", "rune", "drac", "special", "custom", "wait"];
+  const SEQ_ACTIONS = ["m1", "m2", "art", "rune", "drac", "special", "custom", "wait"];
 
   function simulate(ctx, mods, s) {
     // Sequence mode: the user's list of steps in order (Test tab). Otherwise the older priority rotation.
@@ -948,9 +956,9 @@
       return null;
     };
     // one action at time t: buff windows, damage, cooldown, energy, charges; advances t by its cast time
-    const perform = (pick, atkIn) => {
+    const perform = (pick, atkIn, tmIn) => {
       let atk = atkIn;
-      const tm = tim[pick];
+      const tm = tmIn || tim[pick];
       if (pick === "rune" && beenades && atk.hits && atk.hits.length) {
         atk = { ...atk, hits: atk.hits.concat([[atk.hits[0][0], beenades]]) }; // Bomber Satchel: extra Beenades
         beenades = 0;
@@ -958,8 +966,7 @@
       if (pick === "rune" && rr) rageWindows.push([t, t + rr.duration]);
       if (pick === "drac" && atk.buff) infWindows.push([t, t + atk.buff.duration]);
       if (pick === "art" && cloakArt) cloakWindows.push([t, t + cloakDur]);
-      // every custom attack counts as "custom", the charged M2 as "M2"
-      const r = use(t, atk, pick.startsWith("custom") ? "custom" : pick === "m2c" ? "m2" : pick, tm.active > tm.cast + 1e-9 ? tm.active : 0);
+      const r = use(t, atk, pick.startsWith("custom") ? "custom" : pick, tm.active > tm.cast + 1e-9 ? tm.active : 0); // every custom attack counts as "custom"
       if ((pick === "art" || pick === "rune") && markLen && atk.hits && atk.hits.length) markEnd = t + markLen;
       if (pick === "art") {
         afterArt.forEach((p) => { windows[p.name] = t + p.afterArt(atk); });
@@ -969,7 +976,7 @@
       if (pick !== "m1" && pick !== "m2") casts.push({ key: pick, t, cast: tm.cast, active: tm.active });
       if (spiritGated) energy = pick === "special" ? 0 : Math.min(energyMax, energy + spiritGain(ctx, mods, s, atk, A.special.spiritId));
       if (pick === "m1") charges = Math.min(20, charges + (r ? r.hits : 0));
-      if (pick === "m2" || pick === "m2c") charges = 0;
+      if (pick === "m2") charges = 0;
       if (pick !== "m1") log.push({ t, what: atk.name });
       if (pick === "m1" || pick === "m2") {
         ready.art -= mods.artFlat;
@@ -980,15 +987,19 @@
       return r;
     };
 
+    const charge = chargeM2(ctx);
     if (seqMode) {
-      // expand the steps into single actions (an M1 combo is all its swings)
+      // expand the steps into single actions (an M1 combo is all its swings, a charged M2 its own attack and cast time)
       const items = [];
       s.seq.forEach((stp, i) => {
         const n = Math.max(1, Math.min(50, Math.round(+stp.n || 1)));
         for (let k = 0; k < n; k++) {
           if (stp.a === "wait") items.push({ step: i, wait: Math.max(0, Math.min(60, +stp.w || 1)) });
           else if (stp.a === "m1") A.m1.swings.forEach((sw, j) => items.push({ step: i, k: "m1", atk: sw, last: j === A.m1.swings.length - 1 }));
-          else items.push({ step: i, k: stp.a, atk: A[stp.a], last: true });
+          else if (stp.a === "m2" && +stp.c > 0 && charge) {
+            const atk = charge.at(Math.min(1, +stp.c));
+            items.push({ step: i, k: "m2", atk, tm: timing(ctx, mods, s, atk), last: true, charge: +stp.c });
+          } else items.push({ step: i, k: stp.a, atk: A[stp.a], last: true });
         }
       });
       const hasAction = items.some((it) => !it.wait && it.atk);
@@ -1020,7 +1031,8 @@
         acted = true;
         if (it.k === "special" && spiritGated && energy < energyMax - 1e-9) out.note = `released at ${Math.round(energy)}/${energyMax} energy`;
         if (out.t0 === null) out.t0 = t;
-        perform(it.k, it.atk);
+        if (it.charge) out.note = `${Math.round(it.charge * 100)}% charge`;
+        perform(it.k, it.atk, it.tm);
         out.t1 = t;
         if (it.last) { out.n++; done[it.k] = (done[it.k] || 0) + 1; }
       }
@@ -1108,6 +1120,6 @@
   window.VoxlDamage = {
     DMG_TYPES, DOTS, defaults, context, collect, attacks, hit, procsFor, dot, ticks, attackSpeed,
     simulate, sustained, ragePotency, runeRage, swingPattern, rotation, rotOrder, ROT_KEYS, SEQ_ACTIONS, potencyMult, artCooldown, runeCooldown,
-    artAttack, timing, ART_TIMING, spiritGain, SPIRIT_COEFF, armorMult, draconicAttack,
+    artAttack, chargeM2, timing, ART_TIMING, spiritGain, SPIRIT_COEFF, armorMult, draconicAttack,
   };
 })();

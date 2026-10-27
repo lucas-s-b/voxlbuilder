@@ -61,6 +61,9 @@
   // the Test settings with one tab's sequence as the one to simulate
   const withList = (s, mode) => { const L = LISTS[mode]; return { ...s, seq: s[L.key] || [], seqRepeat: !!s[L.repeat], duration: s[L.dur] || 30 }; };
 
+  // "60% · ×1.48 of ×1.80 · 3.2s charging"
+  const chargeLabel = (c, max, time) => (c > 0 ? `${Math.round(c * 100)}% · ×${fmt(1 + (max - 1) * c, 2)} of ×${fmt(max, 2)} · ${fmt(c * time, 1)}s charging` : "0% · tapped");
+
   // "Holy 0.5 + Physical 0.5"
   const typesText = (types, none) => Object.entries(types || {}).filter(([, v]) => v > 0).map(([t, v]) => `${t} ${fmt(v, 2)}`).join(" + ") || none;
 
@@ -69,8 +72,7 @@
     const by = Object.fromEntries(atks.map((a) => [a.key, a]));
     const f = ctx.form;
     const badge = (t) => `<span class="seq-badge outline">${t}</span>`;
-    const out = [["m1", "M1 combo", `${f.m1} · ${by.m1.swings.length} swings`, badge("M1")], ["m2", "M2", f.m2, badge("M2")]];
-    if (by.m2c) out.push(["m2c", "Charged M2", `Hold RMB · ${by.m2c.name.replace("Charged M2 · ", "")}`, badge("M2+")]);
+    const out = [["m1", "M1 combo", `${f.m1} · ${by.m1.swings.length} swings`, badge("M1")], ["m2", "M2", `${f.m2}${A.Dmg.chargeM2(ctx) ? " · can be charged" : ""}`, badge("M2")]];
     if (by.art) out.push(["art", by.art.name, by.art.cooldown ? `Weapon art · ${by.art.cooldown}s cooldown` : "Weapon art", ctx.wpn.art && ctx.wpn.art.image ? A.img(ctx.wpn.art.image, by.art.name) : badge("A")]);
     if (by.rune) out.push(["rune", by.rune.name, by.rune.cooldown ? `Rune · ${by.rune.cooldown}s cooldown` : "Rune", ctx.rune && ctx.rune.image ? A.img(ctx.rune.image, by.rune.name) : badge("R")]);
     if (by.drac) out.push(["drac", by.drac.name, `Draconic rune · ${by.drac.cooldown}s cooldown`, A.img("guild-draconic.png", "Draconic")]);
@@ -107,6 +109,15 @@
     const act = Object.fromEntries(actions.map((x) => [x[0], x]));
     const seqOf = (mode) => (Array.isArray(s[LISTS[mode].key]) ? s[LISTS[mode].key] : []);
     const seqSummaryOf = (mode) => seqOf(mode).map((st) => (act[st.a] ? act[st.a][1] : st.a) + (st.a === "wait" ? ` ${st.w || 1}s` : st.n > 1 ? ` ×${st.n}` : "")).join(" → ") || "no steps";
+    // M2 steps get a charge slider when the build can hold its M2 (Ichor Spark, Lance, Rifle)
+    const chg = Dmg.chargeM2(ctx);
+    const chargeRow = (st, i, d) => {
+      if (st.a !== "m2" || !chg) return "";
+      const c = +st.c || 0;
+      return `<div class="seq-charge"><span class="lab">Charge</span>
+        <input type="range" min="0" max="100" step="5" value="${Math.round(c * 100)}" data-seq-c="${i}" ${d} data-max="${chg.max}" data-time="${chg.time}" aria-label="Charge">
+        <span class="seq-charge-val">${chargeLabel(c, chg.max, chg.time)}</span></div>`;
+    };
     const seqEditor = (mode, empty) => {
       const L = LISTS[mode];
       const seq = seqOf(mode);
@@ -125,7 +136,7 @@
             <button class="mv" data-seq-move="${i}" ${d} data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Move up">▲</button>
             <button class="mv" data-seq-move="${i}" ${d} data-dir="1" ${i === seq.length - 1 ? "disabled" : ""} aria-label="Move down">▼</button>
             <button class="mv del" data-seq-del="${i}" ${d} aria-label="Remove">✕</button>
-          </span></div>`;
+          </span>${chargeRow(st, i, d)}</div>`;
       }).join("");
       const addBtns = actions.map(([k, name, , ico]) => `<button class="seq-add" data-seq-add="${k}" ${d} title="Add ${esc(name)}"><span class="seq-ico portrait sm">${ico}</span><span>${esc(name)}</span></button>`).join("");
       return `
@@ -582,6 +593,14 @@
     root.addEventListener("input", (e) => {
       const el = e.target;
       if (editField(el)) return changed(false);
+      if (el.dataset.seqC !== undefined) {
+        const st = (test()[el.dataset.list || "seq"] || [])[+el.dataset.seqC];
+        if (!st) return;
+        const c = Math.max(0, Math.min(1, (+el.value || 0) / 100));
+        if (c > 0) st.c = c; else delete st.c;
+        el.nextElementSibling.textContent = chargeLabel(c, +el.dataset.max, +el.dataset.time);
+        return changed(false);
+      }
       if (el.dataset.seqN !== undefined || el.dataset.seqW !== undefined) {
         const i = +(el.dataset.seqN !== undefined ? el.dataset.seqN : el.dataset.seqW);
         const v = parseFloat(el.value);

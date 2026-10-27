@@ -164,9 +164,12 @@
     // the DPS, Debuff and Healing sequences
     ["seq", "dseq", "hseq"].forEach((key) => {
       if (!Array.isArray(t[key])) return;
-      out[key] = t[key].slice(0, 30).filter((x) => x).map((x) => ({ ...x, a: x.a === "custom" && customIds.length ? customIds[0] : x.a }))
+      // older saves: "custom" was a single custom attack, "m2c" a fully charged M2
+      out[key] = t[key].slice(0, 30).filter((x) => x)
+        .map((x) => (x.a === "m2c" ? { ...x, a: "m2", c: 1 } : x.a === "custom" && customIds.length ? { ...x, a: customIds[0] } : x))
         .filter((x) => (Dmg.SEQ_ACTIONS.includes(x.a) && x.a !== "custom") || customIds.includes(x.a)).map((x) => ({
           a: x.a, n: clamp(Math.round(+x.n || 1), 1, 50), ...(x.a === "wait" ? { w: clamp(+x.w || 1, 0.1, 60) } : {}),
+          ...(x.a === "m2" && +x.c > 0 ? { c: clamp(Math.round(+x.c * 100) / 100, 0, 1) } : {}),
         }));
     });
     ["duration", "dduration", "hduration"].forEach((k) => { out[k] = clamp(+out[k] || 30, 5, 300); });

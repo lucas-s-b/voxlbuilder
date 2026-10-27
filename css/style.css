@@ -989,3 +989,9 @@ a { color: #8fd3ff; }
 /* Test tab: DPS / Tank / Debuff / Healing */
 .test-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; }
 .test-modes .mode-tab { min-width: 0; text-align: center; padding-left: 4px; padding-right: 4px; }
+
+/* charge slider on M2 sequence steps */
+.seq-charge { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; padding: 2px 0 0 28px; }
+.seq-charge input[type="range"] { flex: 1 1 120px; min-width: 80px; accent-color: #b8462e; }
+.seq-charge-val { min-width: 0; font-size: 13px; font-weight: 600; color: var(--plate-ink-2); }
+.seq-charge .lab { font-size: 13px; font-weight: 700; color: var(--plate-ink); }

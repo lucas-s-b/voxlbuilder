@@ -41,6 +41,7 @@
     bounce: { label: "Bounce potency", def: 0.3, min: 0, max: 2, step: 0.1 },
     bloodlust: { label: "Bloodlust potency", def: 2.5, min: 0, max: 10, step: 0.5 },
     perfection: { label: "Perfection stacks", def: 5, min: 0, max: 50, step: 1 },
+    tide: { label: "Gathering Tide at start", def: 100, min: 0, max: 100, step: 5 },
     element: { label: "Draconic color", def: "Fire", options: ["Fire", "Air", "Earth", "Water", "Holy", "Hex"] },
     emotional: { label: "Emotional state", def: "debuffs", options: ["debuffs", "buffs", "both"] },
     blocksPer10: { label: "Attacks you block per 10s", def: 2, min: 0, max: 50, step: 1 },
@@ -641,7 +642,7 @@
 
   // ---- RMB replacements (toggle to test them as your M2)
   perk("steam-charge", "Steam beam RMB: 6 × 10 Fire/Air (at max Steam Buildup)", false, (E) => E.m2Override({ name: "Steam beam", hits: [[6, 10]], types: { Fire: 0.5, Air: 0.5 }, scalings: { Fire: 1, Air: 1 } }));
-  perk("wave-rider", "Empowered RMB: 40 Water (at 100 Gathering Tide)", false, (E) => E.m2Override({ name: "Wave Rider", hits: [[40, 1]], types: { Water: 1 }, scalings: { Water: 1 } }));
+  perk("wave-rider", "Gathering Tide (2×amt+3/s) empowers the next M2 (+40 Water) or weapon art (+35 Water, cooldown ÷(1+0.5×amt)) at 100", true, (E, a) => E.waveRider(a), ["tide"]);
   perk("divine-crash", "Airborne RMB crash, scales with fall distance", false, (E, a, S, ctx) => {
     const d = S.distance;
     if (ctx.perks["fell-rush"]) return; // combined variant handled by Fell Rush

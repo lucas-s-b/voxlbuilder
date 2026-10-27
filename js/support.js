@@ -224,6 +224,14 @@
     if (p("undying-rot") && S.self["self-poison"]) hs.push(["Undying Rot", (0.2 + 0 / 7.5) * p("undying-rot") * healMult, "per tick while poisoned (unaffected by level)"]);
     const regen = ctx.statuses.regen && ctx.statuses.regen.on;
     if (regen) { const pot = p("holy-tides") ? 0.5 * p("holy-tides") : 1; hs.push(["Regen", heal(pot, { Water: 1, Holy: 1 }), `potency ${pot}`]); }
+    // Wave Rider: an empowered weapon art heals 4.5, an empowered M2 5 (1.0 Water scaling); Extinguish adds +50%/amt
+    // to heals on a Burning ally (you, while burning)
+    const wr = sim.waveRider;
+    if (wr && (wr.art || wr.m2)) {
+      const ext = p("extinguish") && S.self["self-burn"] ? 1 + 0.5 * p("extinguish") : 1;
+      const one = (base) => heal(base, { Water: 1 }) * ext;
+      hs.push(["Wave Rider", (wr.art * one(4.5) + wr.m2 * one(5)) / T, [wr.art ? `${one(4.5).toFixed(1)} per empowered art` : "", wr.m2 ? `${one(5).toFixed(1)} per empowered M2` : ""].filter(Boolean).join(", ") + (ext > 1 ? ", Extinguish (burning)" : "")]);
+    }
     if (drc && drc.blooded && drc.ability.id !== "infusion" && (drc.color === "Holy" || drc.color === "Water") && sim.done && sim.done.drac) {
       const claw = drc.ability.id === "claw";
       const base = drc.color === "Holy" ? (claw ? 5 + 0.5 * blood : 4 + 0.4 * blood) : (claw ? 1.923 + 0.1923 * blood : 1.538 + 0.1538 * blood);

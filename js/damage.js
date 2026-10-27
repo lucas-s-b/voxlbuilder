@@ -168,7 +168,7 @@
       critRoll: [], critDmg: [], critBase: 0, chains: [], critOnly: [], critIgnoreDef: [], critPen: 0, primal: 0, alwaysCrit: [], thief: 0,
       fractured: 0, atkSpeed: [], atkTime: 1, cd: { art: { mult: 1, speed: 0 }, rune: { mult: 1, speed: 0 } }, procs: [], echoes: [],
       dot: { Burn: {}, Bleed: {}, Poison: {} }, dotAll: { addType: {} }, ticks: [], overrides: [], hitsMult: [], rageTypes: [],
-      deltaDrill: 0, divinity: 0, artFlat: 0, runeFlat: 0, artCast: 0, staticBuildup: 0, pyreBloom: 0, m2Override: null, active: [], lucky: 0,
+      deltaDrill: 0, divinity: 0, artFlat: 0, runeFlat: 0, artCast: 0, staticBuildup: 0, pyreBloom: 0, waveRider: 0, m2Override: null, active: [], lucky: 0,
     };
     const E = {
       mult: (name, v, when) => m.mult.push({ name, v, when }),
@@ -214,6 +214,7 @@
       onFinisher: (k, a) => { m.divinity += a; },
       onWeaponHit: (k, v) => { m[k] += v; },
       staticBuildup: (a) => { m.staticBuildup = a; },
+      waveRider: (a) => { m.waveRider = a; },
       pyreBloom: (a) => { m.pyreBloom = a; },
       m2Override: (spec) => { m.m2Override = spec; },
       lucky: (a) => { m.lucky += a; },
@@ -956,8 +957,36 @@
       return null;
     };
     // one action at time t: buff windows, damage, cooldown, energy, charges; advances t by its cast time
+    // Wave Rider (Wave Rider page): Gathering Tide builds at (2 × amount + 3)/s, its 2 × amount part ×4, 3, 3, 3, 2 in the
+    // five seconds after a cleanse (empowered attacks cleanse). At 100 the next M2 or weapon art also deals a Water hit
+    // (40 / 35, 1.0 Water scaling), heals, and consumes it; an empowered art's cooldown is cut to cd / (1 + 0.5 × amount).
+    // The tide starts at the "Gathering Tide at start" setting; art and M2 steps show it.
+    const wr = mods.waveRider;
+    const tide0 = s.sit && typeof s.sit.tide === "number" ? Math.min(100, Math.max(0, s.sit.tide)) : 100;
+    let tide = tide0, tideAt = null, tideT = 0, cleansedAt = -Infinity, empowered = null;
+    const waveRider = { m2: 0, art: 0 };
+    const tideUntil = (x) => {
+      for (let y = tideT; y < x - 1e-9; y += 0.1) {
+        const k = Math.floor(y - cleansedAt);
+        tide += (2 * wr * (k >= 0 && k < 5 ? [4, 3, 3, 3, 2][k] : 1) + 3) * Math.min(0.1, x - y);
+      }
+      tide = Math.min(100, tide);
+      tideT = Math.max(tideT, x);
+    };
     const perform = (pick, atkIn, tmIn) => {
       let atk = atkIn;
+      empowered = null;
+      tideAt = null;
+      if (wr && (pick === "art" || pick === "m2")) {
+        tideUntil(t);
+        tideAt = tide;
+        if (tide >= 100 - 1e-9) {
+          empowered = pick;
+          waveRider[pick]++;
+          tide = 0;
+          cleansedAt = t;
+        }
+      }
       const tm = tmIn || tim[pick];
       if (pick === "rune" && beenades && atk.hits && atk.hits.length) {
         atk = { ...atk, hits: atk.hits.concat([[atk.hits[0][0], beenades]]) }; // Bomber Satchel: extra Beenades
@@ -967,12 +996,14 @@
       if (pick === "drac" && atk.buff) infWindows.push([t, t + atk.buff.duration]);
       if (pick === "art" && cloakArt) cloakWindows.push([t, t + cloakDur]);
       const r = use(t, atk, pick.startsWith("custom") ? "custom" : pick, tm.active > tm.cast + 1e-9 ? tm.active : 0); // every custom attack counts as "custom"
+      if (empowered) use(t, { key: pick, kind: "proc", name: "Wave Rider", hits: [[pick === "art" ? 35 : 40, 1]], types: { Water: 1 }, scalings: { Water: 1 } }, "proc", 0); // after the attack, so its procs come first
       if ((pick === "art" || pick === "rune") && markLen && atk.hits && atk.hits.length) markEnd = t + markLen;
       if (pick === "art") {
         afterArt.forEach((p) => { windows[p.name] = t + p.afterArt(atk); });
         if (perk(ctx, "bomber-satchel") && r && r.hits) beenades = 5;
       }
       if (pick in ready) ready[pick] = t + cd[pick];
+      if (empowered === "art") ready.art = t + cd.art / (1 + 0.5 * wr);
       if (pick !== "m1" && pick !== "m2") casts.push({ key: pick, t, cast: tm.cast, active: tm.active });
       if (spiritGated) energy = pick === "special" ? 0 : Math.min(energyMax, energy + spiritGain(ctx, mods, s, atk, A.special.spiritId));
       if (pick === "m1") charges = Math.min(20, charges + (r ? r.hits : 0));
@@ -1033,6 +1064,7 @@
         if (out.t0 === null) out.t0 = t;
         if (it.charge) out.note = `${Math.round(it.charge * 100)}% charge`;
         perform(it.k, it.atk, it.tm);
+        if (tideAt !== null) out.note = [out.note, empowered ? "empowered by Wave Rider" : `Gathering Tide ${Math.floor(tideAt)}`].filter(Boolean).join(" · ");
         out.t1 = t;
         if (it.last) { out.n++; done[it.k] = (done[it.k] || 0) + 1; }
       }
@@ -1094,7 +1126,7 @@
     const bySource = Object.fromEntries(keys.map((k) => [k, bins.reduce((a, b) => a + b[k], 0)]));
     return {
       T: round(T), mode: countMode ? "count" : "time", bins, perSec, total: fightTotal, avg: T > 0 ? fightTotal / T : 0, peak: Math.max(...perSec),
-      bySource, typeTotals, log, attackSpeed: as, done, capped, cooldowns: cd, timing: tim, casts, hitsBy, dotTotal, steps: stepOut, repeat,
+      bySource, typeTotals, log, attackSpeed: as, done, capped, cooldowns: cd, timing: tim, casts, hitsBy, dotTotal, steps: stepOut, repeat, waveRider,
       direct: fightTotal - bySource.dot, spiritGated, energyMax, infUptime: Math.min(1, infWindows.reduce((q, [a, b]) => q + Math.max(0, Math.min(b, T) - a), 0) / Math.max(1e-6, T)),
     };
   }

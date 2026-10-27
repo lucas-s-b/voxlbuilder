@@ -50,6 +50,9 @@
   })();
   const saveUi = () => { try { localStorage.setItem(UI_KEY, JSON.stringify({ closed: [...tui.closed], tab: tui.tab, detail: tui.detail })); } catch (e) { /* storage unavailable */ } };
 
+  // "Holy 0.5 + Physical 0.5"
+  const typesText = (types, none) => Object.entries(types || {}).filter(([, v]) => v > 0).map(([t, v]) => `${t} ${fmt(v, 2)}`).join(" + ") || none;
+
   // The actions a sequence step can be, for this build: [key, name, sub-line, icon html]
   function actionList(A, ctx, atks, s) {
     const by = Object.fromEntries(atks.map((a) => [a.key, a]));
@@ -60,7 +63,7 @@
     if (by.rune) out.push(["rune", by.rune.name, by.rune.cooldown ? `Rune · ${by.rune.cooldown}s cooldown` : "Rune", ctx.rune && ctx.rune.image ? A.img(ctx.rune.image, by.rune.name) : badge("R")]);
     if (by.drac) out.push(["drac", by.drac.name, `Draconic rune · ${by.drac.cooldown}s cooldown`, A.img("guild-draconic.png", "Draconic")]);
     if (by.special) out.push(["special", by.special.name, by.special.spiritId ? "Monk spirit" : "Perk attack", badge("SP")]);
-    out.push(["custom", "Custom hit", `${fmt(+s.customBase || 0, 1)} × ${+s.customHits || 1} hits`, badge("C")]);
+    (s.customs || []).forEach((c) => out.push([`custom:${c.id}`, c.name, `${fmt(+c.dmg || 0, 1)} × ${c.hits || 1} · ${typesText(c.types, "weapon types")}`, badge("C")]));
     out.push(["wait", "Wait", "Pause for a few seconds", badge("⏱")]);
     return out;
   }
@@ -77,6 +80,16 @@
     const sel = (path, options, value) => `<select class="sort mini" data-path="${path}">${options.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(value) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
     const setBtn = (path, val, label, on, extra) => `<button class="mode-tab outline${on ? " active" : ""}" data-set="${path}" data-val="${esc(String(val))}" ${extra || ""}>${label}</button>`;
 
+    // damage-type split editor: rows of type + coefficient, plus a picker to add a type
+    const typeSplit = (target, types, none) => {
+      const rows = Object.entries(types || {}).map(([t, v]) => `<span class="tsplit-row"><span class="chip outline" style="color:${TC[t] || "#fff"}">${t}</span>
+        <input class="num" type="number" data-tsplit="${target}" data-type="${t}" value="${v}" step="0.05" min="0" max="10" aria-label="${t} coefficient">
+        <button class="mv del" data-tsplit-del="${target}" data-type="${t}" aria-label="Remove ${t}">✕</button></span>`).join("");
+      const left = window.VoxlSupport.INC_TYPES.filter((t) => !(types || {})[t]);
+      return `<div class="tsplit">${rows || `<span class="muted">${none}</span>`}
+        ${left.length ? `<select class="sort mini" data-tsplit-add="${target}" aria-label="Add a damage type"><option value="">+ Type…</option>${left.map((t) => `<option>${t}</option>`).join("")}</select>` : ""}</div>`;
+    };
+
     // ---- 1. sequence
     const actions = actionList(A, ctx, atks, s);
     const act = Object.fromEntries(actions.map((x) => [x[0], x]));
@@ -86,7 +99,7 @@
       const missing = !a;
       return `<div class="seq-step${missing ? " missing" : ""}">
         <span class="seq-num outline">${i + 1}</span>
-        <span class="seq-ico">${a ? a[3] : ""}</span>
+        <span class="seq-ico portrait sm">${a ? a[3] : ""}</span>
         <span class="seq-name"><b>${esc(a ? a[1] : st.a)}</b><i>${esc(missing ? "Not in this build" : a[2])}</i></span>
         <span class="seq-n">${st.a === "wait"
           ? `<input class="num" type="number" data-seq-w="${i}" value="${st.w || 1}" step="0.5" min="0.1" max="60" aria-label="Seconds"><span class="muted">s</span>`
@@ -97,7 +110,7 @@
           <button class="mv del" data-seq-del="${i}" aria-label="Remove">✕</button>
         </span></div>`;
     }).join("");
-    const addBtns = actions.map(([k, name, , ico]) => `<button class="seq-add" data-seq-add="${k}" title="Add ${esc(name)}"><span class="seq-ico">${ico}</span><span>${esc(name)}</span></button>`).join("");
+    const addBtns = actions.map(([k, name, , ico]) => `<button class="seq-add" data-seq-add="${k}" title="Add ${esc(name)}"><span class="seq-ico portrait sm">${ico}</span><span>${esc(name)}</span></button>`).join("");
     const seqSection = `
       <div class="seq-list">${steps || `<div class="seq-empty">No steps yet. Add attacks below in the order you use them.</div>`}</div>
       <div class="sub-h outline">ADD A STEP</div>
@@ -109,7 +122,17 @@
       </div>
       <div class="muted seq-help">${s.seqRepeat
         ? "Loops your steps; anything still on cooldown is skipped that loop."
-        : "Runs your steps once, in order. A step still on cooldown waits for it."}</div>`;
+        : "Runs your steps once, in order. A step still on cooldown waits for it."}</div>
+      <div class="opt-row"><span class="lab">Crits</span><span class="mode-tabs">${setBtn("crit", "avg", "AVERAGE", s.crit === "avg")}${setBtn("crit", "always", "ALWAYS", s.crit === "always")}${setBtn("crit", "never", "NEVER", s.crit === "never")}</span></div>
+      ${byKey.special && byKey.special.specials.length > 1 ? `<div class="opt-row"><span class="lab">Special attack</span>${sel("spirit", byKey.special.specials, byKey.special.specialId)}</div>` : ""}
+      <div class="sub-h outline">CUSTOM ATTACKS</div>
+      ${(s.customs || []).map((c) => `<div class="custom-card">
+        <div class="custom-top"><input class="search" data-custom="${c.id}" data-field="name" value="${esc(c.name)}" maxlength="30" aria-label="Custom attack name">
+          <button class="mv del" data-custom-del="${c.id}" aria-label="Delete ${esc(c.name)}">✕</button></div>
+        <div class="opt-row"><span class="lab">Damage</span><input class="num" type="number" data-custom="${c.id}" data-field="dmg" value="${c.dmg}" step="0.5" min="0" aria-label="Base damage">
+          <span class="lab">× hits</span><input class="num" type="number" data-custom="${c.id}" data-field="hits" value="${c.hits}" step="1" min="1" max="50" aria-label="Hits"></div>
+        <div class="opt-row"><span class="lab">Damage type</span>${typeSplit("c:" + c.id, c.types, "Same as your weapon")}</div></div>`).join("")}
+      ${(s.customs || []).length < 8 ? `<button class="mode-tab outline" data-custom-new>+ NEW CUSTOM ATTACK</button>` : ""}`;
 
     // ---- 2. buffs & conditions
     const statusRow = (id) => {
@@ -163,10 +186,29 @@
     const foe = s.enemy ? SUP.enemyById()[s.enemy] : null;
     const atkNow = SUP.incoming(inc);
     const defChips = Object.entries(s.target).filter(([, v]) => v).map(([k, v]) => `<span class="chip outline" style="color:${TC[k]}">${k} ${v > 0 ? "+" : ""}${v}%</span>`).join("") || `<span class="muted">No defenses</span>`;
-    const sitNum = (k) => { const d = FX().SITUATION[k]; const v = s.sit[k] === undefined ? d.def : s.sit[k]; return `<label class="sit"><span>${esc(d.label)}</span>${num(`sit.${k}`, v, `step="${d.step}" min="${d.min}" max="${d.max}"`)}</label>`; };
-    const hasSummonPerk = SUP.GROUPS.summons.some(P) || P("pain-distribution") || P("revel-in-death");
+    const incSeq = Array.isArray(inc.seq) ? inc.seq : SUP.defaultSeq(foe);
+    const foeIco = foe && foe.image ? A.img(foe.image, foe.name) : `<span class="seq-badge outline">🎯</span>`;
+    const incSteps = incSeq.map((st, i) => {
+      const a = SUP.stepAttack(st, foe);
+      return `<div class="seq-step${a ? "" : " missing"}">
+        <span class="seq-num outline">${i + 1}</span>
+        <span class="seq-ico portrait sm">${st.a === "c" ? `<span class="seq-badge outline">C</span>` : foeIco}</span>
+        <span class="seq-name"><b>${esc(a ? a.name : "Unknown attack")}</b><i>${a ? esc(typesText(a.parts, "no damage")) + (a.guardbreak ? " · guardbreak" : "") : ""}</i></span>
+        <span class="seq-n"><span class="muted">×</span><input class="num" type="number" data-inc-n="${i}" value="${st.n || 1}" step="1" min="1" max="50" aria-label="Times"></span>
+        <span class="seq-btns">
+          <button class="mv" data-inc-move="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Move up">▲</button>
+          <button class="mv" data-inc-move="${i}" data-dir="1" ${i === incSeq.length - 1 ? "disabled" : ""} aria-label="Move down">▼</button>
+          <button class="mv del" data-inc-del="${i}" aria-label="Remove">✕</button>
+        </span></div>
+        ${st.a === "c" ? `<div class="custom-card inc-custom">
+          <div class="opt-row"><span class="lab">Damage</span><input class="num" type="number" data-inc-dmg="${i}" value="${st.dmg}" step="1" min="0" aria-label="Damage"></div>
+          <div class="opt-row"><span class="lab">Damage type</span>${typeSplit("i:" + i, st.types, "Physical")}</div></div>` : ""}`;
+    }).join("");
+    const incAdds = (foe ? foe.attacks.map((x, i) => `<button class="seq-add" data-inc-add="${i}" title="Add ${esc(x.name)}"><span class="seq-ico portrait sm">${foeIco}</span>
+        <span>${esc(x.name)} ${fmt(Object.values(x.parts).reduce((q, v) => q + v, 0), 1)}${x.guardbreak ? " ⛨" : ""}</span></button>`) : [])
+      .concat(`<button class="seq-add" data-inc-add="c" title="Add a custom hit"><span class="seq-ico portrait sm"><span class="seq-badge outline">C</span></span><span>Custom hit</span></button>`).join("");
     const enemySection = `
-      <div class="enemy-row">${foe && foe.image ? A.img(foe.image, foe.name) : `<span class="seq-badge outline">🎯</span>`}
+      <div class="enemy-row">${foe && foe.image ? A.portrait(A.img(foe.image, foe.name), true) : `<span class="seq-badge outline">🎯</span>`}
         <select class="sort mini" data-enemy aria-label="Enemy">
           <option value="">Training dummy (no defenses)</option>
           ${enemies.map((e) => `<option value="${esc(e.id)}"${foe && e.id === foe.id ? " selected" : ""}>${esc(e.name)} · ${fmt(e.hp, 0)} HP</option>`).join("")}
@@ -175,50 +217,11 @@
       <div class="chips">${defChips}</div>
       <details class="steps sub-fold"><summary class="outline">EDIT DEFENSES</summary>
         <div class="def-grid">${Object.keys(s.target).map((k) => `<label class="def"><span class="outline" style="color:${TC[k]}">${k}</span>${num(`target.${k}`, s.target[k], 'step="5"')}</label>`).join("")}</div></details>
-      <div class="sub-h outline">ITS ATTACKS ON YOU</div>
-      ${foe ? `<div class="mode-tabs wrap atk-pick">${setBtn("inc.attack", "avg", "ANY", inc.attack === "avg" || !foe.attacks[inc.attack])}${foe.attacks.map((x, i) =>
-        setBtn("inc.attack", i, `${esc(x.name)} ${fmt(Object.values(x.parts).reduce((q, v) => q + v, 0), 1)}${x.guardbreak ? " ⛨" : ""}`, String(inc.attack) === String(i))).join("")}</div>`
-        : `<div class="opt-row"><span class="lab">Damage per hit</span>${num("inc.dmg", inc.dmg, 'step="1" min="0"')}${sel("inc.type", SUP.INC_TYPES.map((t) => [t, t]), inc.type)}</div>`}
+      <div class="sub-h outline">ITS ATTACKS ON YOU, IN ORDER</div>
+      <div class="seq-list">${incSteps || `<div class="seq-empty">No attacks. Add them below.</div>`}</div>
+      <div class="seq-adds">${incAdds}</div>
       <div class="opt-row"><span class="lab">Hits per 10s</span>${num("inc.per10", inc.per10, 'step="1" min="0" max="100"')}
-        <span class="lab">You block</span><span class="mode-tabs">${[[0, "NONE"], [50, "HALF"], [100, "ALL"]].map(([v, l]) => setBtn("inc.blockPct", v, l, +inc.blockPct === v, 'data-num="1"')).join("")}</span></div>
-      <details class="steps sub-fold"><summary class="outline">MORE</summary>
-        <div class="sit-grid">
-          <label class="sit"><span>Stun per hit (s)</span>${num("inc.stun", inc.stun, 'step="0.1" min="0"')}</label>
-          <label class="sit"><span>Your max HP</span>${num("inc.hp", inc.hp || "", `step="10" min="0" placeholder="${fmt(100 * (1 + ctx.level * 0.0125), 0)}"`)}</label>
-          ${P("parry") || P("buckler") ? `<label class="sit"><span>Parries per 10s</span>${num("inc.parryPer10", inc.parryPer10, 'step="1" min="0"')}</label>` : ""}
-          ${hasSummonPerk ? sitNum("summons") : ""}
-          ${hasSummonPerk ? `<label class="sit"><span>Minion base DPS</span>${num("inc.summonDps", inc.summonDps, 'step="1" min="0"')}</label><label class="sit"><span>Minion base HP</span>${num("inc.summonHp", inc.summonHp, 'step="5" min="1"')}</label>` : ""}
-          ${P("untethered") ? `<label class="sit"><span>Restricted speed</span>${num("inc.speed", inc.speed, 'step="1" min="0"')}</label>` : ""}
-        </div>
-        ${P("mounted-defense") ? chk("inc.mounted", inc.mounted, "Riding the Glacial Snapper mount") : ""}
-        ${P("carapace") ? chk("inc.shieldUp", inc.shieldUp, "Shield (Protection) is up") : ""}
-        ${P("lithic-veil") ? chk("inc.healingAllies", inc.healingAllies, "Lithic Veil is active (you healed someone)") : ""}
-      </details>`;
-
-    // ---- 4. advanced
-    const timingRows = ["m2", "art", "rune", "drac", "special", "custom"].filter((k) => byKey[k] && seq.some((st) => st.a === k)).map((k) => {
-      const tm = Dmg.timing(ctx, mods, s, byKey[k]);
-      const path = `timing.${tm.key}`;
-      return `<div class="tim-row"><div class="rot-lab">${esc(act[k] ? act[k][1] : k)}${tm.note ? `<i class="rot-name">${esc(tm.note)}</i>` : ""}</div>
-        <div class="tim-in"><label><span>Cast</span>${num(`${path}.cast`, (s.timing[tm.key] || {}).cast, `step="0.1" min="0.05" placeholder="${fmt(tm.baseCast, 2)}"`)}</label>
-        <label><span>Active</span>${num(`${path}.active`, (s.timing[tm.key] || {}).active, `step="0.5" min="0" placeholder="${fmt(tm.baseActive, 2)}"`)}</label>
-        <span class="rot-cd">→ ${fmt(tm.cast, 2)}s${tm.active > tm.cast + 1e-6 ? `, hits over ${fmt(tm.active, 2)}s` : ""}</span></div></div>`;
-    }).join("");
-    const specialAtk = byKey.special;
-    const advancedSection = `
-      <div class="opt-row"><span class="lab">Crits</span><span class="mode-tabs">${setBtn("crit", "avg", "AVERAGE", s.crit === "avg")}${setBtn("crit", "always", "ALWAYS", s.crit === "always")}${setBtn("crit", "never", "NEVER", s.crit === "never")}</span></div>
-      <div class="form-grid">
-        <label><span>Base swing time (s)</span>${num("swingTime", s.swingTime, 'step="0.05" min="0.1"')}</label>
-        <label><span>Extra attack speed %</span>${num("perkAtkSpeed", s.perkAtkSpeed, 'step="5"')}</label>
-        <label><span>Other damage bonus %</span>${num("dmgBonus", s.dmgBonus, 'step="5"')}</label>
-        <label><span>Custom hit damage</span>${num("customBase", s.customBase, 'step="0.5" min="0"')}</label>
-        <label><span>Custom hit count</span>${num("customHits", s.customHits, 'step="1" min="1"')}</label>
-        ${byKey.special && byKey.special.spiritId && ctx.perks["spirit-commune"] ? `<label><span>Spirit energy to release</span>${num("spiritMax", s.spiritMax, 'step="5" min="1"')}</label>` : ""}
-      </div>
-      ${specialAtk && specialAtk.specials.length > 1 ? `<div class="opt-row"><span class="lab">Special attack</span>${sel("spirit", specialAtk.specials, specialAtk.specialId)}</div>` : ""}
-      ${timingRows ? `<div class="sub-h outline">CAST TIMES (SECONDS AT 1.0 SPEED)</div>
-        <div class="muted">Cast = how long you're locked. Active = how long its hits keep landing. Blank = estimate (the wiki lists none).</div>
-        <div class="tim-list">${timingRows}</div>` : ""}`;
+        <span class="lab">You block</span>${num("inc.blockPct", inc.blockPct, 'step="5" min="0" max="100"')}<span class="muted">% of hits</span></div>`;
 
     // a foldable section; closed ones show a one-line summary
     const sec = (id, n, title, summary, body) => {
@@ -240,8 +243,7 @@
           ${!wpn.parts.length ? `<div class="cv-warn">No weapon set: using 1-Handed Sword moves with Physical damage. Build one in the CHARACTER tab.</div>` : ""}
           ${sec("seq", 1, "SEQUENCE", seqSummary, seqSection)}
           ${sec("buffs", 2, "BUFFS", onCount ? `${onCount} on` : "none on", buffsSection)}
-          ${sec("enemy", 3, "ENEMY", `${foe ? foe.name : "Training dummy"} · ${atkNow.name}`, enemySection)}
-          ${sec("advanced", 0, "ADVANCED", "crits, attack speed, cast times", advancedSection)}
+          ${sec("enemy", 3, "ENEMY", atkNow.name, enemySection)}
         </div>
         <div class="tv-results" id="testResults"></div>
       </div>`;
@@ -317,12 +319,12 @@
       const when = st.t0 === null ? "not used" : `${fmt(st.t0, 2)}s → ${fmt(st.t1, 2)}s`;
       const extra = [st.n > 1 ? `×${st.n}` : "", st.waited ? `waited ${fmt(st.waited, 2)}s for cooldown` : "", st.skipped ? `skipped ${st.skipped}× on cooldown` : "", st.note].filter(Boolean).join(" · ");
       return `<button class="seq-res" data-detail="${st.a}" ${st.a === "wait" ? "disabled" : ""}>
-        <span class="seq-num outline">${st.i + 1}</span><span class="seq-ico">${a ? a[3] : ""}</span>
+        <span class="seq-num outline">${st.i + 1}</span><span class="seq-ico portrait sm">${a ? a[3] : ""}</span>
         <span class="seq-name"><b>${esc(name)}</b><i>${esc(when)}${extra ? " · " + esc(extra) : ""}</i></span>
         <span class="seq-dmg"><b class="outline">${st.a === "wait" ? "—" : fmt(st.dmg, 0)}</b>${st.a === "wait" ? "" : `<i>${fmt((st.dmg / total) * 100, 0)}%</i>`}</span></button>`;
     }).join("");
     const dotTotal = sim.bySource.dot || 0;
-    const dotRow = dotTotal > 0 ? `<div class="seq-res static"><span class="seq-num outline">+</span><span class="seq-ico"><span class="seq-badge outline">☠</span></span>
+    const dotRow = dotTotal > 0 ? `<div class="seq-res static"><span class="seq-num outline">+</span><span class="seq-ico portrait sm"><span class="seq-badge outline">☠</span></span>
         <span class="seq-name"><b>DoTs &amp; auras</b><i>${esc(Object.keys(Dmg.DOTS).filter((k) => ctx.S.target[k]).join(", ") || "auras")} for the whole ${fmt(sim.T, 2)}s</i></span>
         <span class="seq-dmg"><b class="outline">${fmt(dotTotal, 0)}</b><i>${fmt((dotTotal / total) * 100, 0)}%</i></span></div>` : "";
     const seqTab = `<div class="res-card">
@@ -448,15 +450,48 @@
     const foe = id ? SUP.enemyById()[id] : null;
     test.enemy = foe ? foe.id : "";
     Object.keys(test.target).forEach((k) => { test.target[k] = (foe && foe.defenses[k]) || 0; });
-    test.inc = { ...SUP.defaults(), ...(test.inc || {}), mode: foe ? "enemy" : "custom", ...(foe ? { enemy: foe.id, attack: "avg" } : {}) };
+    test.inc = { ...SUP.defaults(), ...(test.inc || {}), mode: foe ? "enemy" : "custom", seq: null, ...(foe ? { enemy: foe.id } : {}) };
   }
 
   function bindTest(A) {
     const root = A.$("viewTest");
     const test = () => A.build().test;
     const changed = (full) => { A.save(); if (full) renderTest(A); else renderResults(A); };
+    const SUP = window.VoxlSupport;
+    const foeOf = () => (test().enemy ? SUP.enemyById()[test().enemy] : null);
+    const incSeq = () => test().inc.seq || (test().inc.seq = SUP.defaultSeq(foeOf()));
+    const custom = (id) => (test().customs || []).find((c) => c.id === id);
+    // "c:<custom id>" or "i:<enemy step>" -> that attack's {type: coefficient}
+    const typesOf = (target) => {
+      const [kind, key] = target.split(":");
+      const owner = kind === "c" ? custom(key) : incSeq()[+key];
+      return owner ? owner.types || (owner.types = {}) : null;
+    };
+    const numOf = (el) => { const v = parseFloat(el.value); return Number.isFinite(v) ? v : null; };
+    // custom attack / type split / enemy step fields; typing updates the numbers, leaving the field redraws
+    const editField = (el) => {
+      const v = numOf(el);
+      if (el.dataset.custom) {
+        const c = custom(el.dataset.custom);
+        if (c && el.dataset.field === "name") c.name = el.value.slice(0, 30) || "Custom hit";
+        else if (c && v !== null) c[el.dataset.field] = el.dataset.field === "hits" ? Math.max(1, Math.min(50, Math.round(v))) : Math.max(0, v);
+        return true;
+      }
+      if (el.dataset.tsplit) {
+        const ty = typesOf(el.dataset.tsplit);
+        if (ty && v !== null) ty[el.dataset.type] = Math.max(0, Math.min(10, v));
+        return true;
+      }
+      if (el.dataset.incN !== undefined || el.dataset.incDmg !== undefined) {
+        const st = incSeq()[+(el.dataset.incN !== undefined ? el.dataset.incN : el.dataset.incDmg)];
+        if (st && v !== null) { if (el.dataset.incN !== undefined) st.n = Math.max(1, Math.min(50, Math.round(v))); else st.dmg = Math.max(0, v); }
+        return true;
+      }
+      return false;
+    };
     root.addEventListener("input", (e) => {
       const el = e.target;
+      if (editField(el)) return changed(false);
       if (el.dataset.seqN !== undefined || el.dataset.seqW !== undefined) {
         const i = +(el.dataset.seqN !== undefined ? el.dataset.seqN : el.dataset.seqW);
         const v = parseFloat(el.value);
@@ -472,6 +507,12 @@
     });
     root.addEventListener("change", (e) => {
       const el = e.target;
+      if (el.dataset.tsplitAdd !== undefined) {
+        const ty = typesOf(el.dataset.tsplitAdd);
+        if (ty && el.value) ty[el.value] = Object.keys(ty).length ? 0.5 : 1;
+        return changed(true);
+      }
+      if (editField(el)) return changed(true);
       if (el.matches("[data-enemy]")) { setEnemy(test(), el.value); return changed(true); }
       const p = el.closest("[data-path]");
       if (!p || (p.type !== "checkbox" && p.tagName !== "SELECT")) return;
@@ -495,6 +536,32 @@
         return;
       }
       if ((el = t("[data-detail]")) && !el.disabled) { tui.detail = el.dataset.detail; tui.tab = "detail"; saveUi(); return renderResults(A); }
+      if (t("[data-custom-new]")) {
+        const cs = test().customs || (test().customs = []);
+        let n = 1;
+        while (cs.some((c) => c.id === "c" + n)) n++;
+        if (cs.length < 8) cs.push({ id: "c" + n, name: "Custom hit " + n, dmg: 20, hits: 1, types: {} });
+        return changed(true);
+      }
+      if ((el = t("[data-custom-del]"))) {
+        const id = el.dataset.customDel;
+        test().customs = test().customs.filter((c) => c.id !== id);
+        test().seq = (test().seq || []).filter((st) => st.a !== "custom:" + id);
+        return changed(true);
+      }
+      if ((el = t("[data-tsplit-del]"))) { const ty = typesOf(el.dataset.tsplitDel); if (ty) delete ty[el.dataset.type]; return changed(true); }
+      if ((el = t("[data-inc-add]"))) {
+        const seq = incSeq(), v = el.dataset.incAdd, last = seq[seq.length - 1];
+        if (v !== "c" && last && last.a === +v) last.n = Math.min(50, (last.n || 1) + 1); // adding the same attack again stacks it
+        else if (seq.length < 20) seq.push(v === "c" ? SUP.customHit() : { a: +v, n: 1 });
+        return changed(true);
+      }
+      if ((el = t("[data-inc-del]"))) { incSeq().splice(+el.dataset.incDel, 1); return changed(true); }
+      if ((el = t("[data-inc-move]")) && !el.disabled) {
+        const seq = incSeq(), i = +el.dataset.incMove, j = i + +el.dataset.dir;
+        if (j >= 0 && j < seq.length) [seq[i], seq[j]] = [seq[j], seq[i]];
+        return changed(true);
+      }
       if ((el = t("[data-seq-add]"))) {
         const k = el.dataset.seqAdd, seq = test().seq || (test().seq = []);
         const last = seq[seq.length - 1];

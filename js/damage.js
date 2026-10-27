@@ -20,7 +20,9 @@
 
   const defaults = () => ({
     attack: "m1", spirit: null, swingTime: 0.5, perkAtkSpeed: 0,
-    customBase: 20, customHits: 1, crit: "avg", dmgBonus: 0,
+    crit: "avg", dmgBonus: 0,
+    // custom attacks: base damage x hits, with their own damage-type split ({} = the weapon's types)
+    customs: [{ id: "c1", name: "Custom hit", dmg: 20, hits: 1, types: {} }],
     target: { Physical: 0, Magic: 0, Fire: 0, Water: 0, Earth: 0, Air: 0, Hex: 0, Holy: 0 },
     dots: { Burn: { on: false, potency: 0 }, Bleed: { on: false, potency: 0 }, Poison: { on: false, potency: 0 } },
     // rotation: "time" = everything enabled on cooldown for `duration` seconds; "count" = each enabled action `count` times
@@ -708,7 +710,12 @@
       list.push({ ...sp, key: "special", specials: specials.map((x) => [x.id, x.name]), specialId: sp.id });
     }
     if (ctx.potions.has("throwable-damage-potion")) list.push({ key: "potion", kind: "potion", name: "Throwable Damage Potion", hits: [[12, 1]], types: { Physical: 1 }, scalings: {} });
-    list.push({ key: "custom", kind: "custom", name: "Custom attack", hits: [[+s.customBase || 0, +s.customHits || 1]], types: null, scalings: null, weaponTypes: true });
+    (Array.isArray(s.customs) ? s.customs : []).forEach((c) => {
+      const types = Object.fromEntries(Object.entries(c.types || {}).filter(([, v]) => v > 0));
+      const own = Object.keys(types).length > 0;
+      list.push({ key: "custom:" + c.id, kind: "custom", name: c.name || "Custom attack", hits: [[+c.dmg || 0, Math.max(1, Math.round(+c.hits || 1))]],
+        types: own ? types : null, scalings: null, weaponTypes: !own });
+    });
     return list;
   }
 
@@ -846,7 +853,7 @@
     const rot = rotation(s);
     const atks = attacks(ctx, mods, s);
     const find = (k) => atks.find((a) => a.key === k);
-    const A = { m1: find("m1"), m2: find("m2"), art: find("art"), rune: find("rune"), drac: find("drac"), special: find("special"), custom: find("custom") };
+    const A = Object.fromEntries(atks.map((a) => [a.key, a])); // m1, m2, art, rune, drac, special, custom:<id>…
     // a monk spirit is released by energy, not a cooldown
     const spiritGated = !!(A.special && A.special.spiritId && perk(ctx, "spirit-commune"));
     const energyMax = Math.max(1, +s.spiritMax || 100);
@@ -861,8 +868,7 @@
     const order = rotOrder(s);
     const m1Rank = order.indexOf("m1");
     const as = attackSpeed(ctx, mods, s);
-    const tim = Object.fromEntries(["m2", "art", "rune", "drac", "special", "custom"].filter((k) => A[k]).map((k) => [k, timing(ctx, mods, s, A[k])]));
-    tim.m1 = timing(ctx, mods, s, A.m1);
+    const tim = Object.fromEntries(atks.map((a) => [a.key, timing(ctx, mods, s, a)]));
     const rr = runeRage(ctx);
     const markLen = Math.max(0, ...mods.procs.filter((p) => p.needsMark).map((p) => p.needsMark));
     const afterArt = mods.procs.filter((p) => p.afterArt);
@@ -928,7 +934,7 @@
       if (pick === "rune" && rr) rageWindows.push([t, t + rr.duration]);
       if (pick === "drac" && atk.buff) infWindows.push([t, t + atk.buff.duration]);
       if (pick === "art" && cloakArt) cloakWindows.push([t, t + cloakDur]);
-      const r = use(t, atk, pick, tm.active > tm.cast + 1e-9 ? tm.active : 0);
+      const r = use(t, atk, pick.startsWith("custom") ? "custom" : pick, tm.active > tm.cast + 1e-9 ? tm.active : 0); // every custom attack counts as "custom"
       if ((pick === "art" || pick === "rune") && markLen && atk.hits && atk.hits.length) markEnd = t + markLen;
       if (pick === "art") {
         afterArt.forEach((p) => { windows[p.name] = t + p.afterArt(atk); });

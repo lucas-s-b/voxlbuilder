@@ -4,32 +4,46 @@
   const PHYSICAL_GROUP = ["Physical", "Air", "Earth"];
   const INC_TYPES = ["Physical", "Air", "Earth", "Magic", "Fire", "Water", "Hex", "Holy", "True"];
 
-  // The incoming attack: an enemy attack from the wiki (mode "enemy") or your own numbers (mode "custom").
+  // Who hits you: the picked wiki enemy (mode "enemy") or the training dummy (mode "custom"), with a sequence of
+  // attacks ({a: attack index or "c" for a custom hit, n: times, dmg, types}) that repeats at `per10` hits per 10s.
+  // `blockPct` is how often you block. The rest has no setting in the Test tab and keeps these values.
   const defaults = () => ({
-    mode: "enemy", enemy: "dire-buni", attack: "avg", dmg: 20, type: "Physical",
-    per10: 5, blockPct: 0, stun: 0.5, hp: 0, // hp 0 = 100 × level multiplier
+    mode: "enemy", enemy: "dire-buni", seq: null, per10: 5, blockPct: 0,
+    stun: 0.5, hp: 0, // hp 0 = 100 × level multiplier
     parryPer10: 0, mounted: false, shieldUp: true, healingAllies: false,
     summonDps: 5, summonHp: 50, speed: 16,
   });
 
   const enemyById = () => Object.fromEntries((window.VOXL_DATA.enemies || []).map((e) => [e.id, e]));
+  const customHit = () => ({ a: "c", n: 1, dmg: 20, types: { Physical: 1 } });
+  // without a sequence of its own, an enemy uses each of its attacks once and the dummy one custom hit
+  const defaultSeq = (e) => (e && e.attacks.length ? e.attacks.map((_, i) => ({ a: i, n: 1 })) : [customHit()]);
 
-  // {name, parts: {type: damage}, hits, guardbreak (share of attacks that guardbreak), enemy}
-  function incoming(inc) {
-    if (inc.mode === "enemy") {
-      const e = enemyById()[inc.enemy];
-      if (e && e.attacks.length) {
-        if (inc.attack === "avg" || !e.attacks[inc.attack]) {
-          const n = e.attacks.length, parts = {};
-          e.attacks.forEach((a) => Object.entries(a.parts).forEach(([t, v]) => { parts[t] = (parts[t] || 0) + v / n; }));
-          return { name: `${e.name} · any attack`, parts, hits: e.attacks.reduce((x, a) => x + a.hits, 0) / n, guardbreak: e.attacks.filter((a) => a.guardbreak).length / n, enemy: e };
-        }
-        const a = e.attacks[inc.attack];
-        return { name: `${e.name} · ${a.name}`, parts: { ...a.parts }, hits: a.hits, guardbreak: a.guardbreak ? 1 : 0, enemy: e, attack: a };
-      }
+  // One step of the sequence as an attack: {name, parts: {type: damage}, hits, guardbreak, n}
+  function stepAttack(st, e) {
+    const n = Math.max(1, Math.round(+st.n || 1));
+    if (st.a === "c") {
+      const types = Object.entries(st.types || {}).filter(([t, v]) => INC_TYPES.includes(t) && v > 0);
+      const sum = types.reduce((x, [, v]) => x + v, 0) || 1;
+      const dmg = Math.max(0, +st.dmg || 0);
+      const parts = Object.fromEntries((types.length ? types : [["Physical", 1]]).map(([t, v]) => [t, (dmg * v) / (types.length ? sum : 1)]));
+      return { name: "Custom hit", parts, hits: 1, guardbreak: 0, n };
     }
-    const type = INC_TYPES.includes(inc.type) ? inc.type : "Physical";
-    return { name: `${type} attack`, parts: { [type]: Math.max(0, +inc.dmg || 0) }, hits: 1, guardbreak: 0, enemy: null };
+    const a = e && e.attacks[st.a];
+    return a ? { name: a.name, parts: { ...a.parts }, hits: a.hits, guardbreak: a.guardbreak ? 1 : 0, n, attack: a } : null;
+  }
+
+  // The sequence averaged into one incoming attack (by how many times each step is used).
+  function incoming(inc) {
+    const e = inc.mode === "enemy" ? enemyById()[inc.enemy] : null;
+    const steps = (Array.isArray(inc.seq) ? inc.seq : defaultSeq(e)).map((st) => stepAttack(st, e)).filter(Boolean);
+    const total = steps.reduce((x, st) => x + st.n, 0);
+    const parts = {};
+    steps.forEach((st) => Object.entries(st.parts).forEach(([t, v]) => { parts[t] = (parts[t] || 0) + (v * st.n) / total; }));
+    const avg = (f) => (total ? steps.reduce((x, st) => x + f(st) * st.n, 0) / total : 0);
+    const who = e ? e.name : "Training dummy";
+    const name = !steps.length ? `${who} · no attacks` : steps.length === 1 ? `${who} · ${steps[0].name}` : `${who} · ${total} attacks averaged`;
+    return { name, parts, hits: avg((st) => st.hits) || 1, guardbreak: avg((st) => st.guardbreak), enemy: e, steps };
   }
 
   // Every perk this module models, by section.
@@ -108,9 +122,11 @@
     const blockShare = Math.min(1, Math.max(0, +inc.blockPct || 0) / 100) * canGuard;
     const turtle = Math.min(1, 0.2 * p("turtle")) * canGuard;
     const blocked = blockShare + (1 - blockShare) * turtle;
-    if (p("reinforced-block") && blocked > 0) {
-      const f = 1 - blocked + blocked / (1 + (100 + 50 * p("reinforced-block")) / 100);
-      mult *= f; factors.push([`Reinforced Block on ${Math.round(blocked * 100)}% of attacks`, f]);
+    if (blocked > 0) {
+      // a block is +100% damage reduction on that hit; Reinforced Block adds 50% per amount
+      const blockDr = 100 + 50 * p("reinforced-block");
+      const f = 1 - blocked + blocked / (1 + blockDr / 100);
+      mult *= f; factors.push([`Blocking ${Math.round(blocked * 100)}% of attacks (−${Math.round(100 - 100 / (1 + blockDr / 100))}% each)`, f]);
     }
     const parryShare = (p("parry") || p("buckler")) ? Math.min(1, inc.parryPer10 / Math.max(1e-6, attacks10)) : 0;
     if (parryShare) { const f = 1 - 0.9 * parryShare; mult *= f; factors.push([`Parry on ${Math.round(parryShare * 100)}% of attacks (−90%)`, f]); }
@@ -286,5 +302,5 @@
     return { defense, healing, summons, poise, rows, inc };
   }
 
-  window.VoxlSupport = { defaults, evaluate, incoming, enemyById, GROUPS, PERK_IDS, INC_TYPES };
+  window.VoxlSupport = { defaults, evaluate, incoming, stepAttack, defaultSeq, customHit, enemyById, GROUPS, PERK_IDS, INC_TYPES };
 })();

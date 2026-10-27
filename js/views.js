@@ -48,12 +48,12 @@
 
     const raceTiles = D.races.map((r) => `
       <button class="pick${b.race === r.id ? " on" : ""}" data-race="${esc(r.id)}" data-ent="race:${esc(r.id)}">
-        ${r.image ? img(r.image, r.name) : ""}<span class="pick-name outline">${esc(r.name)}</span></button>`).join("");
+        ${A.portrait(r.image ? img(r.image, r.name) : "")}<span class="pick-name outline">${esc(r.name)}</span></button>`).join("");
     const guildTiles = `<button class="pick${!b.guild ? " on" : ""}" data-guild="">
         <span class="pick-none outline">—</span><span class="pick-name outline">None</span></button>` +
       D.guilds.map((g) => `
       <button class="pick${b.guild && b.guild.id === g.id ? " on" : ""}" data-guild="${esc(g.id)}" data-ent="guild:${esc(g.id)}">
-        ${g.image ? img(g.image, g.name) : ""}<span class="pick-name outline">${esc(g.name)}</span></button>`).join("");
+        ${A.portrait(g.image ? img(g.image, g.name) : "")}<span class="pick-name outline">${esc(g.name)}</span></button>`).join("");
     // Draconic guild: pick the draconic rune (extra rune key) and your Dragon Blooded color
     const dr = M.draconic(b);
     const DR = M.DRACONIC;
@@ -73,7 +73,7 @@
     const slotBtn = (kind) => {
       const p = w[kind] && M.partById[w[kind]];
       return `<button class="part-slot${ui.partKind === kind ? " selected" : ""}" data-pk="${kind}" ${p ? `data-ent="part:${esc(p.id)}"` : ""}>
-        <span class="part-img">${p ? img(p.image, p.name) : `<span class="part-empty outline">+</span>`}</span>
+        <span class="part-img portrait">${p ? img(p.image, p.name) : `<span class="part-empty outline">+</span>`}</span>
         <span class="part-lab outline">${PART_LABEL[kind]}</span>
         <span class="part-name">${p ? esc(p.name) : "Empty"}</span></button>`;
     };
@@ -98,7 +98,7 @@
       const n = nums(a);
       const bad = !allowed.includes(a);
       return `<button class="pick art-pick${w.art === a.id ? " on" : ""}${bad ? " bad" : ""}" data-art="${esc(a.id)}" data-ent="art:${esc(a.id)}">
-        ${a.image ? img(a.image, a.name) : `<span class="pick-none outline">?</span>`}<span class="pick-name outline">${esc(a.name)}</span>
+        ${A.portrait(a.image ? img(a.image, a.name) : `<span class="pick-none outline">?</span>`)}<span class="pick-name outline">${esc(a.name)}</span>
         <span class="pick-sub">${n.atk.cooldown ? n.atk.cooldown + "s" : "—"}${n.h ? " · " + fmt(n.h.expected, 0) : ""}</span></button>`;
     }).join("");
     const eq = wpn.art;
@@ -108,7 +108,7 @@
       const miss = M.artMissing(wpn, eq.id);
       const kv = (o, d = 3) => Object.entries(o || {}).map(([k, v]) => `<span class="chip outline" style="color:${TYPE_COLORS[k] || "#fff"}">${esc(k)} ${fmt(v, d)}</span>`).join("");
       artCard = `<div class="art-card dark">
-        <div class="art-card-top">${eq.image ? img(eq.image, eq.name) : ""}<div>
+        <div class="art-card-top">${eq.image ? A.portrait(img(eq.image, eq.name)) : ""}<div>
           <div class="ws-type outline" style="color:#95feff">${esc(eq.name.toUpperCase())}</div>
           <div class="ws-line">${esc(eq.desc)}</div></div></div>
         ${miss.length ? `<div class="cv-warn">This weapon can't equip it: needs ${esc(miss.join(", "))}</div>` : ""}
@@ -125,13 +125,13 @@
         ${eq.requirements.length ? `<div class="ws-line muted">Requires: ${esc(eq.requirements.join(" · "))}</div>` : ""}
       </div>`;
     }
-    const lockedList = locked.map((a) => `<div class="step"><span>${a.image ? img(a.image, a.name) : ""}<b>${esc(a.name)}</b></span><span class="muted">${esc(M.artMissing(wpn, a.id).join(" · "))}</span></div>`).join("");
+    const lockedList = locked.map((a) => `<div class="step"><span>${a.image ? A.portrait(img(a.image, a.name), true) : ""}<b>${esc(a.name)}</b></span><span class="muted">${esc(M.artMissing(wpn, a.id).join(" · "))}</span></div>`).join("");
 
     // Pickers collapse to the current choice once one is made; CHANGE opens the full grid again.
     const open = ui.pickOpen || (ui.pickOpen = {});
     const isOpen = (k, chosen) => !chosen || !!open[k];
     const current = (key, icon, name, sub) => `<div class="pick-current">
-        <span class="pc-ico">${icon || ""}</span><div class="pc-text"><b class="outline">${name}</b><span>${sub}</span></div>
+        <span class="pc-ico portrait">${icon || ""}</span><div class="pc-text"><b class="outline">${name}</b><span>${sub}</span></div>
         <button class="mode-tab outline" data-pick-open="${key}">${open[key] ? "CLOSE" : "CHANGE"}</button></div>`;
     const sec = (n, title, head, body) => `<section class="cv-sec">
         <div class="cv-head"><span class="sec-n outline">${n}</span><h3 class="outline">${title}</h3>${head || ""}</div>${body}</section>`;
@@ -208,7 +208,7 @@
       <button class="tile${w[p.kind] === p.id ? " selected" : ""}" data-part="${esc(p.id)}" data-ent="part:${esc(p.id)}">
         ${w[p.kind] === p.id ? `<span class="badge eq outline">E</span>` : ""}
         <span class="badge fav outline" style="color:#c9a8ff">T${p.tier}</span>
-        ${img(p.image, p.name)}<span class="tname">${esc(p.name)}</span></button>`).join("")
+        ${A.portrait(img(p.image, p.name))}<span class="tname">${esc(p.name)}</span></button>`).join("")
       : `<div class="grid-empty outline">NO PARTS FOUND</div>`;
   }
 

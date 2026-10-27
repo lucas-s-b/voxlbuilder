@@ -90,7 +90,7 @@ a { color: #8fd3ff; }
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px 52px;
   gap: 0 8px;
-  max-width: 1240px;
+  max-width: 1480px;
   margin: 18px auto 0;
   padding: 0 16px;
   align-items: start;
@@ -107,8 +107,11 @@ a { color: #8fd3ff; }
   flex-wrap: wrap;
   gap: 18px;
 }
-.view-inv > .char-col { flex: 1 1 auto; }
-.view-inv > .mid-col { flex: 1 1 400px; }
+/* the picker keeps at least 372px beside the slots (room for its three buttons); the slot column gives way first, so the infusion cross
+   stacks under the equipment cross instead of pushing the picker below them */
+.view-inv { flex-wrap: nowrap; }
+.view-inv > .char-col { flex: 0 1 610px; min-width: 300px; }
+.view-inv > .mid-col { flex: 1 0 372px; }
 [hidden] { display: none !important; }
 
 /* ---------------------------------------------------------------- view tabs */
@@ -263,14 +266,16 @@ a { color: #8fd3ff; }
 
 /* equipment cross with a full-size infusion cross beside it (each infusion in the same spot as its piece).
    Slots use the frame art cut 1:1 from the game: 92px frame, the corner knots stick out 2px into the 4px gap. */
-.crosses { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 14px 24px; margin: 6px 0 14px; }
+.crosses { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 34px 24px; margin: 26px 0 14px; }
 .cross {
   display: grid;
   grid-template-columns: repeat(3, 92px);
   grid-template-rows: repeat(3, 92px);
   gap: 4px;
 }
-.inf-cross-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+/* the label sits above the infusion cross without taking space, so both crosses line up exactly */
+.inf-cross-wrap { position: relative; }
+.inf-cross-wrap .inf-label { position: absolute; left: 0; right: 0; bottom: 100%; margin-bottom: 6px; text-align: center; }
 .cross .cell-head { grid-area: 1 / 2; }
 .cross .cell-ring { grid-area: 2 / 1; }
 .cross .cell-chest { grid-area: 2 / 2; }
@@ -589,6 +594,8 @@ a { color: #8fd3ff; }
   .right-col { grid-row: 3; grid-template-columns: 1fr; }
   .main-panel { min-height: 0; }
   .view-inv, .cv-grid, .tv-grid { grid-template-columns: minmax(0, 1fr); }
+  .view-inv { flex-direction: column; }
+  .view-inv > .char-col, .view-inv > .mid-col { flex: none; min-width: 0; }
   .vtab { font-size: 10px; padding: 2px 4px; }
   .desc-panel { height: 260px; }
   .topbar-tab { gap: 10px; font-size: 10px; padding: 8px 12px; }
@@ -932,3 +939,38 @@ a { color: #8fd3ff; }
 @media (min-width: 821px) { .inv.wide .tv-grid { grid-template-columns: minmax(340px, 0.9fr) minmax(0, 1.1fr); } }
 .sec-toggle { min-width: 0; flex-shrink: 1; }
 .sec-toggle h3 { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+
+/* ================================================================ portraits
+   Item, race, guild, part and art pictures get the in-game slot look: sand window, the frame from
+   slot-frame.png (corner knots stick out 2px) and a soft shadow along the bottom. .sm is the half-size frame. */
+.portrait {
+  position: relative;
+  display: inline-grid; place-items: center; flex: none;
+  border: 6px solid transparent;
+  border-image: url("../assets/img/slot-frame.png") 8 / 8px / 2px stretch;
+  background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.5)) bottom / 100% 16% no-repeat, var(--sand) var(--sand-tex);
+  background-size: 100% 16%, 128px;
+  background-clip: border-box;
+  box-shadow: none;
+  image-rendering: pixelated;
+}
+.portrait img { image-rendering: auto; }
+.portrait.sm { border-width: 3px; border-image-width: 4px; border-image-outset: 1px; background-size: 100% 16%, 64px; }
+.forge-thumb.portrait img { width: 52px; height: 52px; }
+.pc-ico.portrait img { width: 100%; height: 100%; }
+.art-card-top .portrait img { width: 56px; height: 56px; }
+.art-locked .portrait { margin-right: 6px; }
+.art-locked .portrait img { width: 22px; height: 22px; margin: 0; }
+.enemy-row .portrait img { width: 34px; height: 34px; }
+.part-img.portrait { width: 76px; height: 76px; }
+
+/* Test tab: custom attacks and damage-type splits */
+.custom-card { margin: 6px 0; padding: 6px 8px; background: #fff4dc; border: 2px solid #c9ad80; }
+.custom-top { display: flex; align-items: center; gap: 6px; }
+.custom-top .search { flex: 1; min-width: 0; padding: 4px 8px; }
+.custom-card .opt-row { margin: 4px 0; }
+.tsplit { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.tsplit-row { display: inline-flex; align-items: center; gap: 4px; }
+.tsplit .num, .custom-card .num { width: 64px; }
+.inc-custom { margin: -2px 0 6px 28px; }
+.tsplit .chip { background: #3b2a17; }

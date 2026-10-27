@@ -126,9 +126,9 @@
       return `<article class="ws-card dark" data-card="${esc(b.id)}">
         <div class="ws-card-top"><b class="ws-title outline">${esc(b.title)}</b><span class="ws-by">by ${esc(b.author)} · ${ago(b.created_at)}</span></div>
         <div class="ws-meta">
-          ${race ? `<span class="ws-ico" title="${esc(race.name)}">${img(race.image, race.name)}</span>` : ""}
-          ${guild ? `<span class="ws-ico" title="${esc(guild.name)}">${img(guild.image, guild.name)}</span>` : ""}
-          ${art ? `<span class="ws-ico" title="${esc(art.name)}">${img(art.image, art.name)}</span>` : ""}
+          ${race ? `<span class="ws-ico portrait sm" title="${esc(race.name)}">${img(race.image, race.name)}</span>` : ""}
+          ${guild ? `<span class="ws-ico portrait sm" title="${esc(guild.name)}">${img(guild.image, guild.name)}</span>` : ""}
+          ${art ? `<span class="ws-ico portrait sm" title="${esc(art.name)}">${img(art.image, art.name)}</span>` : ""}
           <span class="ws-line">${esc([b.weapon, race && race.name, guild && guild.name, art && art.name].filter(Boolean).join(" · ") || "No weapon")}</span>
         </div>
         <div class="ws-gear" data-gear="${esc(b.id)}"></div>
@@ -188,7 +188,7 @@
       if (!build) continue;
       el.innerHTML = ["head", "chest", "legs", "ring", "rune"].map((slot) => {
         const s = build.slots[slot], it = s && byId[s.id];
-        return it ? `<span class="ws-ico" title="${A.esc(it.name)}${s.lvl ? " +" + s.lvl : ""}">${A.img(it.image, it.name)}</span>` : "";
+        return it ? `<span class="ws-ico portrait sm" title="${A.esc(it.name)}${s.lvl ? " +" + s.lvl : ""}">${A.img(it.image, it.name)}</span>` : "";
       }).join("");
     }
   }

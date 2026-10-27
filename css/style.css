@@ -974,3 +974,14 @@ a { color: #8fd3ff; }
 .tsplit .num, .custom-card .num { width: 64px; }
 .inc-custom { margin: -2px 0 6px 28px; }
 .tsplit .chip { background: #3b2a17; }
+
+/* a margin inside portrait frames so item renders never touch the frame (like the game's 80px slot window
+   holding a 64px item), and room above them so the corner knots clear the tile's own border */
+.portrait { padding: 6px; }
+.portrait.sm { padding: 2px; }
+.tile .portrait img, .pick .portrait img { width: 52px; height: 52px; }
+.tile, .pick { padding-top: 8px; }
+.part-img.portrait { width: 80px; height: 80px; }
+.part-img.portrait img { width: 56px; height: 56px; }
+.forge-thumb.portrait img { width: 46px; height: 46px; }
+.pc-ico.portrait { padding: 2px; }

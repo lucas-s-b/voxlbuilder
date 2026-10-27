@@ -553,7 +553,8 @@
   perk("phantom-pain", "Repeats 25%/amt×(1+0.1×amt) of damage as Hex", true, (E, a) => E.echo({ name: "Phantom Pain", frac: 0.25 * a * (1 + 0.1 * a), types: { Hex: 1 }, when: NODOT, crit: true }));
   perk("blub-blub", "50% chance: 2 × 15%/amt of damage as Water", true, (E, a) => E.echo({ name: "Blub Blub", frac: 0.15 * a * 2 * 0.5, types: { Water: 1 }, when: NODOT }));
   perk("storm-rend", "~20% chance chain lightning (1/3 of damage); Electrical Rend", true, (E) => E.echo({ name: "Storm Rend chain", frac: 0.2 / 3, types: { Air: 0.5, Magic: 0.5 }, when: NODOT }));
-  perk("ichor-spark", "~12.5% chance red chain lightning (20%/amt of damage)", true, (E, a) => E.echo({ name: "Ichor Spark chain", frac: 0.125 * 0.2 * a, types: { Air: 0.5, Physical: 0.5 }, when: NODOT }));
+  perk("ichor-spark", "~12.5% chance red chain lightning (20%/amt of damage); hold RMB for the Charged M2 swipe + ranged slash", true, (E, a) => E.echo({ name: "Ichor Spark chain", frac: 0.125 * 0.2 * a, types: { Air: 0.5, Physical: 0.5 }, when: NODOT }));
+  perk("gravitational-enforcer", "Every RMB first pulls with a (10+amt) Earth/Magic hit", true, (E, a) => E.proc({ name: "Gravitational Enforcer", on: "attack", when: (atk) => atk.kind === "m2", hits: [[10 + a, 1]], types: { Earth: 0.5, Magic: 0.5 }, scalings: { Earth: 1, Magic: 1 } }));
   perk("luminescent-fervor", "Luminescent (after healing): 5%/amt of damage as Holy", false, (E, a) => E.echo({ name: "Luminescent", frac: 0.05 * a, types: { Holy: 1 }, when: NODOT }));
   perk("propelling-fun", "Cloudpush/Cinderpull: 7.5% of damage as Air (Fire while burning)", false, (E, a, S) => E.echo({ name: S.self["self-burn"] ? "Cinderpull" : "Cloudpush", frac: 0.075, types: S.self["self-burn"] ? { Fire: 1 } : { Air: 1 }, when: NODOT }));
   perk("explosive-charge", "Weapon art hits explode for 100% as Fire/Physical", true, (E) => E.echo({ name: "Explosive Charge", frac: 1, types: { Fire: 0.5, Physical: 0.5 }, when: ART }));

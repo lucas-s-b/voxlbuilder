@@ -678,6 +678,24 @@
     return { ...a, overridden: true, cooldown: artCooldown(ctx, mods, a), note: art.baseText };
   }
 
+  // Holding RMB. Ichor Spark works with every weapon, even with RMB-changing perks (Ichor Spark page): at full charge,
+  // after 8 / (1 + 0.25 × amount) s sped up by attack speed, it fires a Swipe (4.75 + 2.75 × amount) and a Ranged
+  // Slash (2.375 + 1.375 × amount), both ×1.8, weapon damage types, 1.0 Physical and Air scaling. Otherwise the
+  // Lance and the Rifle have a held M2 (Lance 6.8 → 20, Rifle 17 → 45.3; the wiki gives no charge time).
+  // On the Scythe both hit 3 times, like its M2: an in-game test of the Lord Vaen scythe matched 3 hits, not 1 (the
+  // wiki gives the damage of one hit).
+  function chargedM2(ctx, f) {
+    const ichor = perk(ctx, "ichor-spark");
+    if (ichor) {
+      const n = f.m2 === "Scythe" ? 3 : 1;
+      return { name: "Charged M2 · Ichor Spark", hits: [[(4.75 + 2.75 * ichor) * 1.8, n], [(2.375 + 1.375 * ichor) * 1.8, n]],
+        types: null, weaponTypes: true, scalings: { Physical: 1, Air: 1 }, charge: 8 / (1 + 0.25 * ichor), guardbreak: true };
+    }
+    if (f.m2 === "Lance") return { name: "Charged M2 · Lance", hits: [[20, 1]], types: null, scalings: null, weaponTypes: true, charge: 1.5, chargeNote: "charge time estimated" };
+    if (f.m2 === "Rifle") return { name: "Charged M2 · Rifle", hits: [[45.3, 1]], types: null, scalings: null, weaponTypes: true, charge: 2, chargeNote: "charge time estimated" };
+    return null;
+  }
+
   function attacks(ctx, mods, s) {
     const f = ctx.form;
     const list = [];
@@ -690,6 +708,8 @@
     list.push(m2o
       ? { key: "m2", kind: "m2", form: f.m2, name: `M2 · ${m2o.name}`, hits: m2o.hits, types: m2o.types, scalings: m2o.scalings, finisher: true, chain: f.m1Moves.length + 1 }
       : { key: "m2", kind: "m2", form: f.m2, name: `M2 · ${f.m2}`, hits: f.m2Moves, types: null, scalings: null, finisher: true, chain: f.m1Moves.length + 1, weaponTypes: true });
+    const charged = chargedM2(ctx, f);
+    if (charged) list.push({ key: "m2c", kind: "m2", form: f.m2, finisher: true, chain: f.m1Moves.length + 1, ...charged });
     if (ctx.wpn.art) list.push(artAttack(ctx, mods, ctx.wpn.art));
     if (ctx.rune) {
       const ra = ctx.rune.attack;
@@ -780,6 +800,7 @@
     let def, speed;
     if (atk.kind === "art") { def = ART_TIMING[atk.artId] || { cast: 1, active: 1 }; speed = artSpeed(ctx, mods, s, atk); }
     else if (atk.key === "rune" || atk.key === "drac") { def = { cast: 0.5, active: 0.5 }; speed = 1; }
+    else if (atk.charge) { const c = atk.charge + (+s.swingTime || 0.5); def = { cast: c, active: c, note: `${atk.charge.toFixed(1)}s to fully charge${atk.chargeNote ? " (" + atk.chargeNote + ")" : ""}` }; speed = as.mult; }
     else { def = { cast: +s.swingTime || 0.5, active: +s.swingTime || 0.5 }; speed = as.mult; }
     const baseCast = over.cast > 0 ? +over.cast : def.cast;
     const baseActive = Math.max(baseCast, over.active > 0 ? +over.active : Math.max(def.active, baseCast));
@@ -843,7 +864,7 @@
   // Only one action at a time: each locks you for its cast time. Hits of a move-stackable action (active > cast)
   // keep landing while you do other things. Cooldown actions go first when ready; M1 combos (each followed by an M2
   // when both are on) fill the gaps. With nothing to fill, the timeline waits for the next cooldown.
-  const SEQ_ACTIONS = ["m1", "m2", "art", "rune", "drac", "special", "custom", "wait"];
+  const SEQ_ACTIONS = ["m1", "m2", "m2c", "art", "rune", "drac", "special", "custom", "wait"];
 
   function simulate(ctx, mods, s) {
     // Sequence mode: the user's list of steps in order (Test tab). Otherwise the older priority rotation.
@@ -934,7 +955,8 @@
       if (pick === "rune" && rr) rageWindows.push([t, t + rr.duration]);
       if (pick === "drac" && atk.buff) infWindows.push([t, t + atk.buff.duration]);
       if (pick === "art" && cloakArt) cloakWindows.push([t, t + cloakDur]);
-      const r = use(t, atk, pick.startsWith("custom") ? "custom" : pick, tm.active > tm.cast + 1e-9 ? tm.active : 0); // every custom attack counts as "custom"
+      // every custom attack counts as "custom", the charged M2 as "M2"
+      const r = use(t, atk, pick.startsWith("custom") ? "custom" : pick === "m2c" ? "m2" : pick, tm.active > tm.cast + 1e-9 ? tm.active : 0);
       if ((pick === "art" || pick === "rune") && markLen && atk.hits && atk.hits.length) markEnd = t + markLen;
       if (pick === "art") {
         afterArt.forEach((p) => { windows[p.name] = t + p.afterArt(atk); });
@@ -944,7 +966,7 @@
       if (pick !== "m1" && pick !== "m2") casts.push({ key: pick, t, cast: tm.cast, active: tm.active });
       if (spiritGated) energy = pick === "special" ? 0 : Math.min(energyMax, energy + spiritGain(ctx, mods, s, atk, A.special.spiritId));
       if (pick === "m1") charges = Math.min(20, charges + (r ? r.hits : 0));
-      if (pick === "m2") charges = 0;
+      if (pick === "m2" || pick === "m2c") charges = 0;
       if (pick !== "m1") log.push({ t, what: atk.name });
       if (pick === "m1" || pick === "m2") {
         ready.art -= mods.artFlat;

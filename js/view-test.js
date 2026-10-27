@@ -59,6 +59,7 @@
     const f = ctx.form;
     const badge = (t) => `<span class="seq-badge outline">${t}</span>`;
     const out = [["m1", "M1 combo", `${f.m1} · ${by.m1.swings.length} swings`, badge("M1")], ["m2", "M2", f.m2, badge("M2")]];
+    if (by.m2c) out.push(["m2c", "Charged M2", `Hold RMB · ${by.m2c.name.replace("Charged M2 · ", "")}`, badge("M2+")]);
     if (by.art) out.push(["art", by.art.name, by.art.cooldown ? `Weapon art · ${by.art.cooldown}s cooldown` : "Weapon art", ctx.wpn.art && ctx.wpn.art.image ? A.img(ctx.wpn.art.image, by.art.name) : badge("A")]);
     if (by.rune) out.push(["rune", by.rune.name, by.rune.cooldown ? `Rune · ${by.rune.cooldown}s cooldown` : "Rune", ctx.rune && ctx.rune.image ? A.img(ctx.rune.image, by.rune.name) : badge("R")]);
     if (by.drac) out.push(["drac", by.drac.name, `Draconic rune · ${by.drac.cooldown}s cooldown`, A.img("guild-draconic.png", "Draconic")]);

@@ -64,7 +64,7 @@
     "War Hammer": { m1: [[[6, 1]], [[6, 1]], [[14, 1]]], m2: [[8, 2]] },
     "Dual Kamas": { m1: [[[4, 1]], [[4, 1]], [[3, 3]]], m2: [[5.5, 1]] },
     "Scythe": { m1: x3(7.5), m2: [[5, 3]] },
-    "Lance": { m1: x3(6), m2: [[6.8, 1], [14, 1]], note: "Lance M2 value marked uncertain (6.8 + 14?)" },
+    "Lance": { m1: x3(6), m2: [[6.8, 1]], note: "Lance M2: 6.8 tapped, up to 20 held (Charged M2)" },
     "Saw Sword": { m1: [[[4, 2]], [[4, 2]], [[4, 2]]], m2: [[1.7, 10]] },
     "Saw Fists": { m1: [[[2.5, 2]], [[2.5, 2]], [[2.5, 2]]], m2: [[3, 7]] },
     "Artillery Mage": { m1: [[[5.5, 1]], [[5.5, 1]]], m2: [[8.5, 1]] },
@@ -77,7 +77,7 @@
     "Side Gun": { m1: null, m2: [[7, 1]] },
     "Shotgun": { m1: null, m2: [[4.5, 3]] },
     "Dual Guns": { m1: [[[4, 1]], [[4, 1]]], m2: [[1.6, 8]] },
-    "Rifle": { m1: [[[5, 1]], [[5, 1]], [[18, 1]]], m2: [[17, 1]], note: "Rifle M2 ranges 17 to 45.3 depending on how long it's held" },
+    "Rifle": { m1: [[[5, 1]], [[5, 1]], [[18, 1]]], m2: [[17, 1]], note: "Rifle M2: 17 tapped, up to 45.3 held (Charged M2)" },
   };
 
   const DUAL_BY_BLADE = { "Small Blade": "Dual Daggers", "Medium Blade": "Dual Swords", "Heavy Blade": "Dual Unbalanced Swords", "Hammer Head": "Dual Mallets" };

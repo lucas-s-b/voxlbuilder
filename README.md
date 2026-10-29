@@ -12,30 +12,24 @@ A build planner for the Roblox game **Voxlblade**, styled after the in-game inve
 - 3 loadouts saved in the browser, share links (`#b=…`) and a copy-as-text summary
 - **Character tab**: race (passives applied), guild + rank (stats and perks), weapon from Handle + Blade or
   Gloves + Essence (Monk), with Shrine of Balance tier bonus, automatic Hybrid ×1.5 scaling, Monk rank bonus and weapon art
-- **Test tab sequence**: build your own attack sequence (+ M1 combo, M2, weapon art, rune, draconic rune, special,
-  custom hit or a wait), reorder and repeat steps, then run it once (steps on cooldown wait for it) or repeat it for a
-  fight length (steps on cooldown are skipped that loop). Results show total, time, DPS and each step's damage; click a
-  step for its full hit breakdown. Sections: 1 Sequence, 2 Buffs (only what your build can use), 3 Enemy (sets the
-  target's defenses and who hits you), Advanced
 - **Character tab**: race, guild and weapon art collapse to your current pick (CHANGE to reopen); the part list opens
   when you click a part slot
-- **Test tab**: damage simulator using the wiki's damage formula (scaling, level, damage bonuses, Rage,
-  crits, armor penetration vs. target defenses). Toggle rune buffs (e.g. Rage Rune), DoTs (Burn/Bleed/Poison
-  in dmg/s with potency perks), on-hit procs, then see per-hit damage, sustained DPS, average DPS over a
-  rotation and a damage-per-second chart. The rotation toggles M1 combo, M2, weapon art, rune, special
-  and custom attack separately (custom/special take your own cooldown), either **on cooldown** for a
-  fight length or **by count** (e.g. 5 M1 combos, 2 M2s, 3 arts), which reports the time taken and
-  total ÷ time. Only one action runs at a time: each locks you for its cast time, and move-stackable
-  ones (e.g. Starstream, Focus) keep hitting over their active time while you attack. The wiki has no
-  cast times, so arts default to estimates you can override per action; weapon arts speed up only from
-  weapon/stat attack speed, Quickcast and Stone Weapon. Monk spirits fire when Spirit Commune energy is full
-- **Rotation order**: ▲▼ set the priority. By count the order is strict (M1 combo on top = all combos
-  first); on cooldown, actions above the M1 combo cut into it and actions below wait for it to finish.
-  E.g. Starstream above the Rage Rune casts it before Rage, so it doesn't get the Rage bonus
-- **Survival card** (`js/support.js`): pick a wiki enemy and attack (47 mobs scraped from their pages, with
-  damage types, hit counts and guardbreaks) or enter your own, then one incoming attack against your defenses (type defenses,
-  damage reduction, blocks, dodges, shield, stun) plus healing per second, minion multipliers, poise and
-  utility perks, so every perk on the wiki has a modeled effect
+- **Test tab**: four tests (DPS, Tank, Debuff, Healing) share one combat simulation. Your sequence plays out on a
+  timeline: every perk, buff, debuff, proc, DoT, heal and cooldown is applied when it happens, every chance is rolled,
+  and the results are the average of many simulated fights
+- **Sequences**: each test has its own list of steps (M1 combo, M2, weapon art, rune, draconic rune, special, throwable
+  potion, custom hit or a wait), run once (steps on cooldown wait for it) or repeated for a fight length (steps on
+  cooldown are skipped that loop). M2s and chargeable arts have a charge slider
+- **Buffs**: start the fight with buffs or debuffs from allies, drink potions, turn situational perks on, set the
+  conditions your perks read (your HP, enemies in range, sunlight, ...) and untick any perk to compare
+- **Results**: DPS shows each step's damage, a damage per second chart, damage by type, one use of any action with its
+  formula, and the uptime and potency of every buff and debuff. Tank shows damage taken per second against the enemy's
+  attacks, with dodges, blocks, parries, shield, stun and deaths. Debuff shows how often each debuff is applied and how
+  long it stays up. Healing shows healing per second on you and on allies, by source
+- **Rules tab**: every perk, status effect, weapon form, weapon art, rune, monk spirit, potion and constant the tests
+  use is plain data in `data/rules/`, with formulas written as text (`"1 + 0.1 * amount"`). Edit any entry in the
+  site: edits are saved in your browser and can be exported and imported as a JSON file. To change the defaults for
+  everyone, edit the files in `data/rules/`
 - **Weapon art frame**: icons, only the arts your weapon can equip (Weapon Arts requirements, hybrid
   bonus excluded), damage per cast, cooldown, cast time and type split for the picked art
 - Click anything in the Character tab to pin its description (hover still previews)
@@ -45,33 +39,22 @@ A build planner for the Roblox game **Voxlblade**, styled after the in-game inve
   and weapon; like (♥), load into your loadout (undoable), copy a tiny `#w=<id>` link, and delete your own builds
 - **Draconic guild rune infusion** (Draconic Blood page): with the Draconic guild you pick the draconic rune on
   its extra rune key (Dragon Claw at rank 1, Dragon Infusion from rank 2, Dragon Bubble at rank 3) and your Dragon
-  Blooded color. It's its own rotation action in the Test tab: Claw/Bubble damage of your color (Physical for other
+  Blooded color. It's its own action in the Test tab sequences: Claw/Bubble damage of your color (Physical for other
   races) with the color's attack stats, Dragon Infusion's buff windows adding your color's damage type to every
   attack, and color effects on Burn, debuffs, healing, stun and poise. As a rune infusion it uses rune cooldown
   effects and rune damage perks
 
-### Perks, statuses and potions in the Test tab
-- ~180 damage-relevant perks are modeled from their wiki formulas (`js/effects.js`): damage boosts, type bonuses and
-  conversions, crit chance/damage, armor penetration, attack speed, cooldowns, on-hit / finisher / cast procs, echo damage
-  (Phantom Pain, chain lightning, …), DoT changes, per-second auras and RMB / weapon art replacements.
-- Every perk toggle only appears when your build has that perk; situational ones (airborne, behind the target, …) start off.
-- Status effects (Rage, Tailwind, Bounce, Inspired, Critical Boost, Shatter, Sticky variants, Frostbite, …) only appear when
-  something in your build — or a picked potion — provides them. Potions: Rage, Poison, Throwable Damage, Throwable Poison
-  (Potion Chugger scales them).
-- Defensive damage perks (Thorns, Blastshield, Magic Guard, …) use "blocks / hits taken per 10s" inputs; perks that trigger on
-  applying a status (Barbed Flurry, Cauterize, Hex Ray, Ice Burst) use per-attack application chances from your build.
-- Lucky rerolls every chance-based proc (`1 − (1−p)(1−⅔p)^⌊L⌋(1−⅔p·frac)`) and applies its stat penalties.
-- Every hit, proc, echo, DoT and aura shows its damage-type split (% and damage), plus damage by type for the whole fight.
-- Perk Effectiveness and Cursed scale perk amounts globally (except the perks the wiki excludes and enchant perks), and
-  stat-converting perks (Brawny, Strong Tides, Weight Distribution, Rocky Body, …) are applied to your stat totals.
-
-### Test tab assumptions
-- M1 combo and M2 base damage per weapon form come from an in-game table (`MOVES` in `js/model.js`); the weapon
-  form follows stance perks (Dual Wielding, Duelist Stance, Kama Blades, Lance, Saw Stance/Heart), core perks
-  (Artillery Mage, Stratos Winds, Storm Caster, Virulent Core), RMB replacements (Cosmic Ray, Mine) and the Blaster Ring.
-- Base swing time defaults to 0.5s per swing (editable); all swings in a combo are timed the same.
-- DoTs are assumed to stay applied for the whole fight; casts are instant.
-- Perks whose damage effects aren't modeled are listed under "Not simulated".
+### How the simulation works
+- Damage follows the wiki's formula: base damage, scaling, level, damage bonuses, damage reduced, damage type, type
+  multipliers, crit and armor, in that order.
+- Statuses are applied by the attacks and perks that cause them, with their potency and duration changes, and only
+  count while they last.
+- Armor penetration, Shatter and other armor reductions, crit chance from Dexterity and perks, Lucky rerolls, proc
+  coefficients, cooldown reduction, cooldown speed and flat reductions follow the wiki's Armor Penetration, Critical
+  Hit, Lucky and Cooldowns pages.
+- M1 and M2 base damage per weapon form, cast times and minion attack timings are in `data/rules/attacks.js`. The wiki
+  gives no cast times, so those are estimates you can change in the Rules tab.
+- Perks marked as not simulated are listed under OTHER PERKS.
 
 ## Running
 
@@ -92,7 +75,8 @@ python scripts/scrape_wiki.py --refresh
 
 Install [Pillow](https://pypi.org/project/pillow/) to also trim and downscale the downloaded images (optional).
 Enchant math lives in `js/enchants.js` and `js/calc.js`, mirroring the wiki's enchant table. Weapon, race and
-guild rules are in `js/model.js`, the damage model in `js/damage.js`, and the Character/Test views in `js/views.js`.
+guild rules are in `js/model.js`, the combat simulation in `js/engine/`, the rules it reads in `data/rules/`, the
+Character view in `js/views.js` and the Test view in `js/view-test.js` (its text is in `js/test-text.js`).
 
 Fan-made; not affiliated with Voxlblade.
 

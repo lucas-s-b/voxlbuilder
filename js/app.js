@@ -3,7 +3,7 @@
   const C = window.VoxlCalc;
   const E = window.VoxlEnchants;
   const M = window.VoxlModel;
-  const Dmg = window.VoxlDamage;
+  const Engine = window.VoxlEngine;
   const $ = (id) => document.getElementById(id);
 
   const itemById = Object.fromEntries(D.items.map((i) => [i.id, i]));
@@ -124,83 +124,7 @@
     return out;
   }
 
-  function sanitizeTest(t) {
-    const d = Dmg.defaults();
-    if (!t || typeof t !== "object") return d;
-    const out = { ...d };
-    // swing time, extra attack speed, damage bonus, spirit energy and cast-time overrides no longer have a setting: defaults
-    ["attack", "crit", "rotMode", "duration", "seqRepeat", "dseqRepeat", "dduration", "hseqRepeat", "hduration", "enemy"].forEach((k) => {
-      if (t[k] !== undefined && typeof t[k] === typeof d[k]) out[k] = t[k];
-    });
-    if (!["time", "count"].includes(out.rotMode)) out.rotMode = "time";
-    // older saves had three checkboxes instead of the rotation table
-    const legacy = { m2: t.useM2, art: t.useArt, rune: t.useRune };
-    out.rot = Object.fromEntries(Object.entries(d.rot).map(([k, def]) => {
-      const v = t.rot && typeof t.rot[k] === "object" && t.rot[k] ? t.rot[k] : {};
-      const r = { ...def };
-      if (typeof legacy[k] === "boolean") r.on = legacy[k];
-      if (typeof v.on === "boolean") r.on = v.on;
-      if (typeof v.count === "number" && Number.isFinite(v.count)) r.count = clamp(Math.round(v.count), 0, 999);
-      if ("cooldown" in def && typeof v.cooldown === "number" && Number.isFinite(v.cooldown)) r.cooldown = clamp(v.cooldown, 0, 600);
-      return [k, r];
-    }));
-    if (typeof t.spirit === "string") out.spirit = t.spirit;
-    if (!["m1", "m2", "art", "rune", "drac", "special", "potion", "custom"].includes(out.attack)) out.attack = "m1";
-    if (!["avg", "always", "never"].includes(out.crit)) out.crit = "avg";
-    Object.keys(d.target).forEach((k) => { if (t.target && typeof t.target[k] === "number") out.target[k] = t.target[k]; });
-    Object.keys(d.dots).forEach((k) => {
-      const v = t.dots && t.dots[k];
-      if (v) out.dots[k] = { on: !!v.on, potency: typeof v.potency === "number" ? v.potency : 0 };
-    });
-    const plain = (o, ok) => Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {})
-      .filter(([k, v]) => /^[a-z0-9-]+$/i.test(k) && ok(v)));
-    out.rotOrder = Dmg.rotOrder(t);
-    // custom attacks (saves from before kept one as customBase × customHits)
-    const legacyCustom = [{ id: "c1", name: "Custom hit", dmg: typeof t.customBase === "number" ? t.customBase : 20, hits: typeof t.customHits === "number" ? t.customHits : 1, types: {} }];
-    out.customs = (Array.isArray(t.customs) ? t.customs : legacyCustom).slice(0, 8)
-      .filter((c) => c && /^[a-z0-9]{1,8}$/i.test(c.id))
-      .map((c) => ({ id: c.id, name: String(c.name || "Custom hit").slice(0, 30), dmg: clamp(+c.dmg || 0, 0, 1e6), hits: clamp(Math.round(+c.hits || 1), 1, 50), types: cleanTypes(c.types) }));
-    const customIds = out.customs.map((c) => "custom:" + c.id);
-    // the DPS, Debuff and Healing sequences
-    ["seq", "dseq", "hseq"].forEach((key) => {
-      if (!Array.isArray(t[key])) return;
-      // older saves: "custom" was a single custom attack, "m2c" a fully charged M2
-      out[key] = t[key].slice(0, 30).filter((x) => x)
-        .map((x) => (x.a === "m2c" ? { ...x, a: "m2", c: 1 } : x.a === "custom" && customIds.length ? { ...x, a: customIds[0] } : x))
-        .filter((x) => (Dmg.SEQ_ACTIONS.includes(x.a) && x.a !== "custom") || customIds.includes(x.a)).map((x) => ({
-          a: x.a, n: clamp(Math.round(+x.n || 1), 1, 50), ...(x.a === "wait" ? { w: clamp(+x.w || 1, 0.1, 60) } : {}),
-          ...(x.a === "m2" && +x.c > 0 ? { c: clamp(Math.round(+x.c * 100) / 100, 0, 1) } : {}),
-        }));
-    });
-    ["duration", "dduration", "hduration"].forEach((k) => { out[k] = clamp(+out[k] || 30, 5, 300); });
-    if (out.enemy && !(window.VOXL_DATA.enemies || []).some((e) => e.id === out.enemy)) out.enemy = "";
-    // who hits you: the chosen enemy (the training dummy uses custom hits), its attack sequence, frequency and blocks
-    const SUP = window.VoxlSupport;
-    const inc = t.inc && typeof t.inc === "object" ? t.inc : {};
-    out.inc = { ...SUP.defaults(), mode: out.enemy ? "enemy" : "custom", enemy: out.enemy || SUP.defaults().enemy,
-      per10: typeof inc.per10 === "number" ? clamp(inc.per10, 0, 100) : 5, blockPct: typeof inc.blockPct === "number" ? clamp(inc.blockPct, 0, 100) : 0 };
-    const foe = out.enemy && SUP.enemyById()[out.enemy];
-    const stepOk = (x) => x && (x.a === "c" || (foe && Number.isInteger(x.a) && foe.attacks[x.a]));
-    let incSeq = Array.isArray(inc.seq) ? inc.seq : null;
-    if (!incSeq && inc.mode === "custom" && !out.enemy && typeof inc.dmg === "number") incSeq = [{ a: "c", n: 1, dmg: inc.dmg, types: { [inc.type || "Physical"]: 1 } }];
-    if (!incSeq && foe && Number.isInteger(+inc.attack) && foe.attacks[+inc.attack]) incSeq = [{ a: +inc.attack, n: 1 }];
-    out.inc.seq = incSeq ? incSeq.filter(stepOk).slice(0, 20).map((x) => ({
-      a: x.a, n: clamp(Math.round(+x.n || 1), 1, 50), ...(x.a === "c" ? { dmg: clamp(+x.dmg || 0, 0, 1e6), types: cleanTypes(x.types) } : {}),
-    })) : null;
-    out.potions = plain(t.potions, (v) => typeof v === "boolean");
-    out.perkOn = plain(t.perkOn, (v) => typeof v === "boolean");
-    out.sit = plain(t.sit, (v) => ["number", "string", "boolean"].includes(typeof v));
-    out.status = Object.fromEntries(Object.entries(plain(t.status, (v) => v && typeof v === "object")).map(([k, v]) => [k, {
-      on: !!v.on, src: Number.isInteger(v.src) ? v.src : 0, ...(typeof v.pot === "number" ? { pot: v.pot } : {}),
-    }]));
-    return out;
-  }
-
-  // {damage type: coefficient}, only known types with a positive value
-  function cleanTypes(types) {
-    return Object.fromEntries(Object.entries(types && typeof types === "object" ? types : {})
-      .filter(([k, v]) => window.VoxlSupport.INC_TYPES.includes(k) && typeof v === "number" && v > 0).map(([k, v]) => [k, Math.min(10, v)]));
-  }
+  const sanitizeTest = (saved) => Engine.sanitizeSettings(saved);
 
   function validEnchants(list) {
     const kept = [];
@@ -251,7 +175,7 @@
   // ------------------------------------------------------------ share links
   // "#c=" codes: the compact build with only the Test settings that differ from the defaults, deflated and base64url'd.
   // Older "#b=" codes (plain base64 JSON) still load.
-  const testDefaults = () => ({ ...Dmg.defaults(), inc: window.VoxlSupport.defaults() });
+  const testDefaults = () => Engine.defaultSettings();
 
   // the parts of `v` that differ from `d` (objects compared key by key, everything else as a whole)
   function diff(v, d) {
@@ -979,7 +903,7 @@
 
   // ------------------------------------------------------------ views
   const api = {
-    D, C, E, M, Dmg, $, esc, img, portrait, ui, build, save, commit, totalsOf, perkInfo, statLine, nameHTML, renderDesc,
+    D, C, E, M, Engine, $, esc, img, portrait, ui, build, save, commit, totalsOf, perkInfo, statLine, nameHTML, renderDesc,
   };
   window.VoxlApp = api;
   window.VoxlViews.char.bind(api);

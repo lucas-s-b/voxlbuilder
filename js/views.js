@@ -16,18 +16,19 @@
 
   // Damage, cooldown and timing of a weapon art with the current build and Test settings (vs the Test target).
   function artNumbers(A) {
-    const b = A.build();
-    const s = b.test;
-    const totals = A.totalsOf(b);
-    const wpn = A.M.weapon(b);
-    const ctx = A.Dmg.context(b, totals, wpn, s);
-    const mods = A.Dmg.collect(ctx, s);
+    const build = A.build();
+    const totals = A.totalsOf(build);
+    const weapon = A.M.weapon(build);
     const cache = {};
     return (art) => {
       if (cache[art.id]) return cache[art.id];
-      const atk = A.Dmg.artAttack(ctx, mods, art);
-      const h = atk.hits && atk.hits.length ? A.Dmg.hit(ctx, mods, s, atk, { rage: 0 }) : null;
-      cache[art.id] = { atk, h, tm: A.Dmg.timing(ctx, mods, s, atk), wpn };
+      const profile = A.Engine.buildProfile(build, totals, { ...weapon, art }, build.test);
+      const preview = A.Engine.abilityPreview(profile, "art", 30);
+      cache[art.id] = {
+        atk: { cooldown: preview ? preview.cooldown : art.cooldown },
+        h: preview && preview.damage > 0 ? { expected: preview.damage, hits: preview.hitCount, expByType: preview.byType } : null,
+        tm: { cast: preview ? preview.cast : 1, active: preview ? preview.active : 1 }, wpn: weapon,
+      };
       return cache[art.id];
     };
   }

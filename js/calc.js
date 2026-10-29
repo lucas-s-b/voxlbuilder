@@ -108,66 +108,21 @@
   }
 
   // Perk Effectiveness and Cursed raise most perk amounts by 10% each per perk (multiplicatively),
-  // except these perks and anything granted by enchants.
-  const UNSCALED_PERKS = ["cursed", "perk-effectiveness", "luminescent-fervor", "valor", "spirit-commune", "channeled-weapon", "quickcast", "thief-training", "vampire"];
+  // except the perks the rules mark as unscaled and anything granted by enchants.
   function scalePerkAmounts(perks) {
-    const pe = perks["perk-effectiveness"] ? perks["perk-effectiveness"].amount : 0;
-    const cu = perks.cursed ? perks.cursed.amount : 0;
-    const mult = (1 + 0.1 * pe) * (1 + 0.1 * cu);
-    if (mult === 1) return;
-    Object.values(perks).forEach((p) => {
-      if (UNSCALED_PERKS.includes(p.id)) return;
-      p.amount = round((p.amount - p.fromEnchants) * mult + p.fromEnchants);
+    const effectiveness = perks["perk-effectiveness"] ? perks["perk-effectiveness"].amount : 0;
+    const cursed = perks.cursed ? perks.cursed.amount : 0;
+    const multiplier = (1 + 0.1 * effectiveness) * (1 + 0.1 * cursed);
+    if (multiplier === 1) return;
+    Object.values(perks).forEach((perk) => {
+      if (window.VoxlEngine.isUnscaled(perk.id)) return;
+      perk.amount = round((perk.amount - perk.fromEnchants) * multiplier + perk.fromEnchants);
     });
   }
 
-  // Perks that convert or add stats, in the order the wiki gives (Strong Tides → Brawny → Weight Distribution).
-  function applyStatPerks(st, perks) {
-    const a = (id) => (perks[id] ? perks[id].amount : 0);
-    const get = (k) => st[k] || 0;
-    if (a("strong-tides")) st["Water Boost"] = get("Water Boost") + get("Physical Boost") * 0.1 * a("strong-tides");
-    if (a("brawny")) {
-      const conv = Math.min(1, 0.2 * a("brawny"));
-      ["Magic Boost", "Fire Boost", "Water Boost", "Earth Boost", "Air Boost", "Hex Boost", "Holy Boost", "Dexterity Boost"].forEach((k) => {
-        if (get(k) > 0) { st["Physical Boost"] = get("Physical Boost") + get(k) * conv; st[k] = get(k) * (1 - conv); }
-      });
-    }
-    if (a("weight-distribution")) {
-      const avg = ((get("Physical Boost") + get("Dexterity Boost")) / 2) * 1.5;
-      st["Physical Boost"] = avg;
-      st["Dexterity Boost"] = avg;
-    }
-    if (a("quick-witted")) st["Dexterity Boost"] = get("Dexterity Boost") + Math.max(0, get("Speed Boost")) * 0.25 * a("quick-witted");
-    if (a("whirl-foot")) st["Speed Boost"] = get("Speed Boost") + 0.05 * get("Air Boost") * a("whirl-foot");
-    if (a("true-balance")) {
-      const avg = ((get("Holy Boost") + get("Hex Boost")) / 2) * 1.5;
-      st["Holy Boost"] = avg;
-      st["Hex Boost"] = avg;
-    }
-    if (a("righted-wrongs")) {
-      const neg = (k) => Math.max(0, -get(k));
-      const w = neg("Warding"), d = neg("Physical Defense") + neg("Magic Defense"), t = neg("Tenacity");
-      const o = Object.keys(st).filter((k) => !["Warding", "Physical Defense", "Magic Defense", "Tenacity"].includes(k)).reduce((s, k) => s + neg(k), 0);
-      const dex = a("righted-wrongs") * (2 / 21) * (w + d * 3 + t * 0.4 + o * 2);
-      st["Dexterity Boost"] = get("Dexterity Boost") + dex;
-      st["Speed Boost"] = get("Speed Boost") + dex * 0.1;
-    }
-    if (a("lucky")) {
-      st.Warding = get("Warding") - 25 * a("lucky");
-      st.Protection = get("Protection") - 6 * a("lucky");
-      st.Tenacity = get("Tenacity") - 0.1 * a("lucky");
-    }
-    // defensive conversions
-    if (a("rocky-body")) st["Physical Defense"] = get("Physical Defense") + get("Earth Boost") * 0.5 * a("rocky-body");
-    if (a("swift-guard")) st["Physical Defense"] = get("Physical Defense") + get("Dexterity Boost") * 0.1 * a("swift-guard");
-    if (a("immovable")) st["Physical Defense"] = get("Physical Defense") + 30 * get("Tenacity") * a("immovable");
-    if (a("frozen-heart")) {
-      const g = (1 / 45 + a("frozen-heart") / 45) * get("Cold Resistance");
-      ["Warding", "Physical Defense", "Magic Defense"].forEach((k) => { st[k] = get(k) + g; });
-    }
-    if (a("spellshield")) st.Protection = get("Protection") + 0.15 * (get("Magic Boost") + get("Magic Defense")) * a("spellshield");
-    if (a("carapace")) st.Protection = get("Protection") + 0.075 * get("Earth Boost") * a("carapace");
-    if (a("extra-layers")) { st.Warding = get("Warding") * (1 + 0.2 * a("extra-layers")); st.Protection = get("Protection") * (1 + 0.2 * a("extra-layers")); }
+  // Perks that convert or add stats come from the rules ("stat" effects), in their rule order.
+  function applyStatPerks(stats, perks) {
+    window.VoxlEngine.applyStatEffects(stats, Object.fromEntries(Object.values(perks).map((perk) => [perk.id, perk.amount])));
   }
 
   // Derived numbers from the wiki "Stats" page.

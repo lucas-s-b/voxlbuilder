@@ -987,7 +987,7 @@ a { color: #8fd3ff; }
 .pc-ico.portrait { padding: 2px; }
 
 /* Test tab: DPS / Tank / Debuff / Healing */
-.test-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; }
+.test-modes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; }
 .test-modes .mode-tab { min-width: 0; text-align: center; padding-left: 4px; padding-right: 4px; }
 
 /* charge slider on M2 sequence steps */
@@ -995,3 +995,13 @@ a { color: #8fd3ff; }
 .seq-charge input[type="range"] { flex: 1 1 120px; min-width: 80px; accent-color: #b8462e; }
 .seq-charge-val { min-width: 0; font-size: 13px; font-weight: 600; color: var(--plate-ink-2); }
 .seq-charge .lab { font-size: 13px; font-weight: 700; color: var(--plate-ink); }
+
+/* ---------------------------------------------------------------- Test: rules editor */
+.rule-list { max-height: 60vh; overflow-y: auto; }
+.rule-list .seq-res { display: block; }
+.rule-list .seq-res.on { box-shadow: inset 0 0 0 2px #a06bff; }
+.rule-list .seq-name { display: flex; flex-direction: column; }
+.rule-text { width: 100%; min-height: 360px; resize: vertical; font-family: ui-monospace, Consolas, monospace; font-size: 13px; line-height: 1.4;
+  background: #1f160d; color: #fff3dc; border: 2px solid #1a1007; padding: 8px; tab-size: 2; }
+.rule-code { display: block; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #f3e6cc; }
+@media (max-width: 560px) { .test-modes { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

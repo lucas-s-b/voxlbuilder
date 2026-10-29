@@ -3,6 +3,7 @@
   const DEFENSE_TYPES = ["Physical", "Magic", "Fire", "Water", "Earth", "Air", "Hex", "Holy"];
   const SEQUENCES = { dps: ["seq", "seqRepeat", "duration"], tank: ["tseq", "tseqRepeat", "tduration"], debuff: ["dseq", "dseqRepeat", "dduration"], heal: ["hseq", "hseqRepeat", "hduration"] };
   const STEP_ACTIONS = ["m1", "m2", "art", "rune", "drac", "special", "potion", "wait"];
+  const SETTINGS_VERSION = 2;
 
   const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
   const isPlainKey = (key) => /^[a-z0-9:-]+$/i.test(key);
@@ -42,9 +43,8 @@
   }
 
   function sanitizeSettings(saved) {
-    const defaults = defaultSettings();
-    if (!saved || typeof saved !== "object") return defaults;
-    const result = defaults;
+    const result = { ...defaultSettings(), version: SETTINGS_VERSION };
+    if (!saved || typeof saved !== "object") return result;
     if (["avg", "always", "never"].includes(saved.crit)) result.crit = saved.crit;
     if (typeof saved.runs === "number") result.runs = clamp(Math.round(saved.runs), 10, 1000);
     if (typeof saved.special === "string") result.special = saved.special;
@@ -61,6 +61,9 @@
       if (typeof saved[repeatKey] === "boolean") result[repeatKey] = saved[repeatKey];
       if (typeof saved[durationKey] === "number") result[durationKey] = clamp(saved[durationKey], 5, 300);
     });
+    const savedSteps = Object.values(SEQUENCES).flatMap(([listKey]) => (Array.isArray(saved[listKey]) ? result[listKey] : []));
+    const oldComboSteps = saved.version !== SETTINGS_VERSION && savedSteps.some((step) => step.a === "m1");
+    if (saved.comboSteps === true || oldComboSteps) result.comboSteps = true;
     const incoming = saved.inc && typeof saved.inc === "object" ? saved.inc : {};
     const enemy = result.enemy && enemies.find((entry) => entry.id === result.enemy);
     ["per10", "blockPct", "parryPct", "stun"].forEach((key) => { if (typeof incoming[key] === "number") result.inc[key] = clamp(incoming[key], 0, key === "stun" ? 10 : 100); });

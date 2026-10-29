@@ -26,7 +26,7 @@
       self: { statuses: {}, hp: maxHp, maxHp, shield: Math.max(0, Math.min(maxHp, profile.stats.Protection || 0)), bonusShield: 0, shieldBroken: false, lastHit: -1e9 },
       target: { statuses: {}, defenses: options.targetDefenses || {}, pool: false, hp: 0, maxHp: 0, dead: false },
       minions: [], minionMode: false, lastSummon: null, energy: 0, energyMax: constants.spiritEnergyMax || 100, energyBlockedUntil: -1,
-      lastCleanse: -1e9, vitalMist: 0, stepIndex: -1, currentAttack: null, releasingSpirit: false, lastHitDue: 0,
+      lastCleanse: -1e9, vitalMist: 0, stepIndex: -1, currentAttack: null, releasingSpirit: false, lastHitDue: 0, comboIndex: 0,
       report: newReport(options.steps),
     };
     combat.active.context = context;
@@ -85,7 +85,7 @@
           finisher: last && formHasFinisher && !removeFinisher, chain: index + 1, procCoef: m1Rule.procCoef === undefined ? 1 : m1Rule.procCoef, replacedByM2: last && replaceFinisher,
         };
       });
-      actions.m1 = { key: "m1", name: "M1 combo", swings: list };
+      actions.m1 = { key: "m1", name: "M1", swings: list };
     }
     const m2Rule = profile.form.m2Rule || {};
     const chargeEffect = passingStatic("chargeM2", {})[0];
@@ -371,7 +371,6 @@
       const uses = Math.max(1, Math.min(50, Math.round(+step.n || 1)));
       for (let use = 0; use < uses; use++) {
         if (step.a === "wait") items.push({ stepIndex, wait: Math.max(0, Math.min(60, +step.w || 1)), first: use === 0 });
-        else if (step.a === "m1" && actions.m1) actions.m1.swings.forEach((swing, swingIndex) => items.push({ stepIndex, key: "m1", swing, first: use === 0 && swingIndex === 0, last: swingIndex === actions.m1.swings.length - 1 }));
         else if (step.a.startsWith("swing:") && actions.m1) items.push({ stepIndex, key: "m1", swing: actions.m1.swings[+step.a.slice(6)], first: true, last: true });
         else items.push({ stepIndex, key: step.a, charge: +step.c || 0, first: use === 0, last: true });
       }
@@ -389,8 +388,11 @@
   function performItem(context, actions, item) {
     const action = actions[item.key];
     if (item.key === "m1") {
-      if (item.swing.replacedByM2) return performM2(context, actions.m2, 0);
-      return performSwing(context, item.swing);
+      const swings = action.swings;
+      const swing = item.swing || swings[context.comboIndex % swings.length];
+      context.comboIndex = item.swing ? 0 : (context.comboIndex + 1) % swings.length;
+      if (swing.replacedByM2) return performM2(context, actions.m2, 0);
+      return performSwing(context, swing);
     }
     if (item.key === "m2") return performM2(context, action, item.charge);
     if (item.key === "art" || item.key === "rune" || item.key === "drac") return performAbility(context, action, item.charge);
@@ -427,6 +429,7 @@
       const step = steps[item.stepIndex];
       context.stepIndex = item.stepIndex;
       if (item.wait) {
+        context.comboIndex = 0;
         if (step.start === null) step.start = context.time;
         combat.advanceTo(context, Math.min(end, context.time + item.wait));
         step.end = context.time;
@@ -441,6 +444,7 @@
         combat.advanceTo(context, ready);
       }
       if (step.start === null) step.start = context.time;
+      if (item.key !== "m1") context.comboIndex = 0;
       const lock = performItem(context, actions, item);
       if (lock === 0 && item.key === "special") { step.note = "energy"; step.skipped++; continue; }
       actedThisLoop = true;

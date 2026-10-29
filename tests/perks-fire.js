@@ -7,7 +7,7 @@ const build = {
 };
 const baseStats = { "Physical Boost": 60, "Dexterity Boost": 50, "Magic Boost": 30, "Fire Boost": 30, "Water Boost": 20, "Earth Boost": 20, "Air Boost": 20, "Hex Boost": 20, "Holy Boost": 20,
   "Summon Boost": 20, Protection: 20, "Physical Defense": 20, "Magic Defense": 10, Warding: 10, Tenacity: 0.2, "Attack Speed": 5 };
-const steps = [{ a: "m1", n: 2 }, { a: "art", n: 1 }, { a: "rune", n: 1 }, { a: "m2", n: 1 }, { a: "m1", n: 1 }, { a: "m2", n: 1 }];
+const steps = [{ a: "m1", n: 6 }, { a: "art", n: 1 }, { a: "rune", n: 1 }, { a: "m2", n: 1 }, { a: "m1", n: 3 }, { a: "m2", n: 1 }];
 
 function profileWith(perks, settings) {
   const totals = { stats: { ...baseStats }, perks: Object.fromEntries(Object.entries(perks).map(([id, amount]) => [id, { id, amount }])) };

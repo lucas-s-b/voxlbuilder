@@ -14,16 +14,19 @@
     try { saved = JSON.parse(localStorage.getItem(UI_KEY)); } catch (error) { saved = null; }
     return {
       closed: new Set(saved && Array.isArray(saved.closed) ? saved.closed : ["advanced"]),
+      openFolds: new Set(saved && Array.isArray(saved.openFolds) ? saved.openFolds : []),
       tab: (saved && saved.tab) || "sequence", detail: (saved && saved.detail) || "", mode: MODES.includes(saved && saved.mode) ? saved.mode : "dps",
       ruleSection: (saved && saved.ruleSection) || "perks", ruleKey: (saved && saved.ruleKey) || "", ruleSearch: "", ruleMessage: "", ruleDraft: null, resetArmed: false,
     };
   })();
   const saveInterface = () => {
     try {
-      localStorage.setItem(UI_KEY, JSON.stringify({ closed: [...interfaceState.closed], tab: interfaceState.tab, detail: interfaceState.detail, mode: interfaceState.mode,
+      localStorage.setItem(UI_KEY, JSON.stringify({ closed: [...interfaceState.closed], openFolds: [...interfaceState.openFolds], tab: interfaceState.tab, detail: interfaceState.detail, mode: interfaceState.mode,
         ruleSection: interfaceState.ruleSection, ruleKey: interfaceState.ruleKey }));
     } catch (error) { /* storage unavailable */ }
   };
+
+  const fold = (id, title, body) => `<details class="steps sub-fold" data-fold="${id}"${interfaceState.openFolds.has(id) ? " open" : ""}><summary class="outline">${title}</summary>${body}</details>`;
 
   const resultCache = new Map();
   function cached(key, compute) {
@@ -41,6 +44,12 @@
     const totals = A.totalsOf(build);
     const weapon = A.M.weapon(build);
     const profile = Engine.buildProfile(build, totals, weapon, settings);
+    if (settings.comboSteps) {
+      const comboLength = ((profile.form.m1Rule || {}).m1 || []).length || 1;
+      Object.values(Engine.SEQUENCES).forEach(([listKey]) => settings[listKey].forEach((step) => { if (step.a === "m1") step.n = Math.min(50, step.n * comboLength); }));
+      delete settings.comboSteps;
+      A.save();
+    }
     const signature = JSON.stringify(build);
     const catalog = cached(signature + "|catalog", () => Engine.listActions(profile));
     return { build, settings, totals, weapon, profile, catalog, signature };
@@ -135,7 +144,7 @@
       return `<div class="seq-step${action ? "" : " missing"}">
         <span class="seq-num outline">${index + 1}</span>
         <span class="seq-ico portrait sm">${action ? action[3] : ""}</span>
-        <span class="seq-name"><b>${escape(action ? action[1] : step.a)}</b><i>${escape(action ? action[2] : TEXT.notInBuild)}</i></span>
+        <span class="seq-name" title="${escape(action ? action[2] : TEXT.notInBuild)}"><b>${escape(action ? action[1] : step.a)}</b>${action ? "" : `<i>${TEXT.notInBuild}</i>`}</span>
         <span class="seq-n">${step.a === "wait"
           ? `<input class="num" type="number" data-seq-w="${index}" ${listAttribute} value="${step.w || 1}" step="0.5" min="0.1" max="60" aria-label="${TEXT.seconds}"><span class="muted">s</span>`
           : `<span class="muted">×</span><input class="num" type="number" data-seq-n="${index}" ${listAttribute} value="${step.n || 1}" step="1" min="1" max="50" aria-label="×">`}</span>
@@ -145,32 +154,29 @@
           <button class="mv del" data-seq-del="${index}" ${listAttribute} aria-label="✕">✕</button>
         </span>${chargeRow(step, index, listAttribute)}</div>`;
     }).join("");
-    const addButtons = actions.map(([key, name, , icon]) => `<button class="seq-add" data-seq-add="${key}" ${listAttribute} title="${escape(name)}"><span class="seq-ico portrait sm">${icon}</span><span>${escape(name)}</span></button>`).join("");
+    const addButtons = actions.map(([key, name, subtitle, icon]) => `<button class="seq-add" data-seq-add="${key}" ${listAttribute} title="${escape(subtitle)}"><span class="seq-ico portrait sm">${icon}</span><span>${escape(name)}</span></button>`).join("");
     const sequenceEditor = `
       <div class="seq-list">${stepRows || `<div class="seq-empty">${TEXT.emptySequence[mode]}</div>`}</div>
       <div class="sub-h outline">${TEXT.addStep}</div>
       <div class="seq-adds">${addButtons}</div>
       <div class="seq-mode">
-        ${setButton(repeatKey, "", TEXT.runOnce, !settings[repeatKey], 'data-bool="0"')}
-        ${setButton(repeatKey, "1", TEXT.repeatFor, !!settings[repeatKey], 'data-bool="1"')}
+        ${setButton(repeatKey, "", TEXT.runOnce, !settings[repeatKey], `data-bool="0" title="${TEXT.onceHelp}"`)}
+        ${setButton(repeatKey, "1", TEXT.repeatFor, !!settings[repeatKey], `data-bool="1" title="${TEXT.repeatHelp}"`)}
         ${settings[repeatKey] ? `${numberInput(durationKey, settings[durationKey], 'step="5" min="5" max="300"')}<span class="muted">${TEXT.seconds}</span>` : ""}
       </div>
-      <div class="muted seq-help">${settings[repeatKey] ? TEXT.repeatHelp : TEXT.onceHelp}</div>
-      <div class="opt-row"><span class="lab">${TEXT.crits}</span><span class="mode-tabs">${["avg", "always", "never"].map((crit) => setButton("crit", crit, TEXT.critModes[crit], settings.crit === crit)).join("")}</span></div>
       ${catalog.actions.special && catalog.actions.special.choices.length > 1 ? `<div class="opt-row"><span class="lab">${TEXT.specialAttack}</span>${select("special", catalog.actions.special.choices, catalog.actions.special.special.id)}</div>` : ""}
-      <div class="sub-h outline">${TEXT.customAttacks}</div>
-      ${(settings.customs || []).map((custom) => `<div class="custom-card">
+      ${fold("customs", TEXT.customAttacks((settings.customs || []).length), `${(settings.customs || []).map((custom) => `<div class="custom-card">
         <div class="custom-top"><input class="search" data-custom="${custom.id}" data-field="name" value="${escape(custom.name)}" maxlength="30" aria-label="${escape(custom.name)}">
           <button class="mv del" data-custom-del="${custom.id}" aria-label="✕">✕</button></div>
         <div class="opt-row"><span class="lab">${TEXT.damage}</span><input class="num" type="number" data-custom="${custom.id}" data-field="dmg" value="${custom.dmg}" step="0.5" min="0" aria-label="${TEXT.damage}">
           <span class="lab">${TEXT.timesHits}</span><input class="num" type="number" data-custom="${custom.id}" data-field="hits" value="${custom.hits}" step="1" min="1" max="50" aria-label="${TEXT.timesHits}"></div>
         <div class="opt-row"><span class="lab">${TEXT.damageType}</span>${typeSplit("c:" + custom.id, custom.types, TEXT.sameAsWeapon)}</div></div>`).join("")}
-      ${(settings.customs || []).length < 8 ? `<button class="mode-tab outline" data-custom-new>${TEXT.newCustom}</button>` : ""}`;
+      ${(settings.customs || []).length < 8 ? `<button class="mode-tab outline" data-custom-new>${TEXT.newCustom}</button>` : ""}`)}`;
 
     const buffsSection = renderBuffs(A, state, { numberInput, checkbox, select });
     const enemySection = renderEnemy(A, state, mode, { numberInput, typeSplit });
-    const advancedSection = `<div class="opt-row"><span class="lab">${TEXT.advanced.runs}</span>${numberInput("runs", settings.runs, 'step="10" min="10" max="1000"')}</div>
-      <div class="muted seq-help">${TEXT.advanced.runsHelp}</div>`;
+    const advancedSection = `<div class="opt-row"><span class="lab">${TEXT.crits}</span><span class="mode-tabs">${["avg", "always", "never"].map((crit) => setButton("crit", crit, TEXT.critModes[crit], settings.crit === crit)).join("")}</span></div>
+      <div class="opt-row"><span class="lab" title="${TEXT.advanced.runsHelp}">${TEXT.advanced.runs}</span>${numberInput("runs", settings.runs, 'step="10" min="10" max="1000"')}</div>`;
 
     const section = (id, number, title, summary, body) => {
       const open = !interfaceState.closed.has(id);
@@ -241,14 +247,13 @@
     const startCount = Object.keys(settings.start.self || {}).length + Object.keys(settings.start.target || {}).length;
     const onCount = startCount + Object.values(settings.potions || {}).filter(Boolean).length + situational.filter(([id]) => settings.situational[id]).length;
     const html = `
-      <div class="buff-group"><div class="sub-h outline">${TEXT.buffs.startWith}</div>
-        <div class="muted seq-help">${TEXT.buffs.startHelp}</div>
+      <div class="buff-group"><div class="sub-h outline" title="${TEXT.buffs.startHelp}">${TEXT.buffs.startWith}</div>
         <div class="opt-row"><span class="lab">${TEXT.buffs.onYou}</span>${startPicker("self")}</div>${startRows("self")}
         <div class="opt-row"><span class="lab">${TEXT.buffs.onEnemy}</span>${startPicker("target")}</div>${startRows("target")}</div>
       ${group(TEXT.buffs.potions, potionRows)}
       ${group(TEXT.buffs.situational, situational.map((entry) => perkRow(entry, `situational.${entry[0]}`, !!settings.situational[entry[0]])).join(""))}
       ${conditionRows.length ? group(TEXT.buffs.conditions, `<div class="sit-grid">${numberConditions.join("")}</div>${booleanConditions.join("")}`) : ""}
-      ${alwaysOn.length ? `<details class="steps sub-fold"><summary class="outline">${TEXT.buffs.alwaysOn(alwaysOn.length)} <span class="muted">${TEXT.buffs.untick}</span></summary>${alwaysOn.map((entry) => perkRow(entry, `perkOn.${entry[0]}`, !settings.perkOff[entry[0]])).join("")}</details>` : ""}`;
+      ${alwaysOn.length ? fold("alwaysOn", `${TEXT.buffs.alwaysOn(alwaysOn.length)} <span class="muted">${TEXT.buffs.untick}</span>`, alwaysOn.map((entry) => perkRow(entry, `perkOn.${entry[0]}`, !settings.perkOff[entry[0]])).join("")) : ""}`;
     return { html, summary: onCount ? TEXT.buffs.summaryOn(onCount) : TEXT.buffs.summaryNone };
   }
 
@@ -301,8 +306,7 @@
         </select></div>
       <div class="sub-h outline">${TEXT.enemy.defenses}</div>
       <div class="chips">${defenseChips}</div>
-      <details class="steps sub-fold"><summary class="outline">${TEXT.enemy.editDefenses}</summary>
-        <div class="def-grid">${Object.keys(settings.target).map((type) => `<label class="def"><span class="outline" style="color:${colors[type]}">${type}</span>${inputs.numberInput(`target.${type}`, settings.target[type], 'step="5"')}</label>`).join("")}</div></details>
+      ${fold("defenses", TEXT.enemy.editDefenses, `<div class="def-grid">${Object.keys(settings.target).map((type) => `<label class="def"><span class="outline" style="color:${colors[type]}">${type}</span>${inputs.numberInput(`target.${type}`, settings.target[type], 'step="5"')}</label>`).join("")}</div>`)}
       ${attacksBlock}`;
   }
 
@@ -316,13 +320,13 @@
     const tank = runTab(state, "tank", mode === "tank" ? 0 : kpiRuns);
     const heal = runTab(state, "heal", mode === "heal" ? 0 : kpiRuns);
     const body = mode === "dps" ? dpsBody(A, state, dps) : mode === "tank" ? tankBody(A, state, tank) : mode === "debuff" ? debuffBody(A, state, runTab(state, "debuff", 0)) : healBody(A, state, heal);
-    const kpi = (id, label, value, sub, color) => `<button class="kpi${mode === id ? " on" : ""}" data-test-mode="${id}" aria-pressed="${mode === id}">
+    const kpi = (id, label, value, sub, color, tooltip) => `<button class="kpi${mode === id ? " on" : ""}" data-test-mode="${id}" aria-pressed="${mode === id}"${tooltip ? ` title="${tooltip}"` : ""}>
       <span class="lab">${label}</span><b class="outline" style="color:${color}">${value}</b><span class="kpi-sub">${sub}</span></button>`;
     const perSecond = (value, report) => value / Math.max(1e-9, report.duration);
     box.innerHTML = `
       <div class="kpis">
-        ${kpi("dps", TEXT.results.total, format(dps.damage, 0), TEXT.results.inSeconds(format(dps.duration, 2)), "#fff3dc")}
-        ${kpi("dps", TEXT.results.dps, format(perSecond(dps.damage, dps)), TEXT.results.overFight, "#6dff9a")}
+        ${kpi("dps", TEXT.results.total, format(dps.damage, 0), TEXT.results.inSeconds(format(dps.duration, 2)), "#fff3dc", TEXT.results.spread(format(dps.spread.low, 0), format(dps.spread.high, 0), dps.runs))}
+        ${kpi("dps", TEXT.results.dps, format(perSecond(dps.damage, dps)), TEXT.results.overFight, "#6dff9a", TEXT.results.swingNote(format(state.catalog.swingTime, 3)))}
         ${kpi("tank", TEXT.results.taken, format(perSecond(tank.taken.total, tank), 1), TEXT.results.inSeconds(format(tank.duration, 0)), "#ff9a9a")}
         ${kpi("heal", TEXT.results.healed, format(perSecond(heal.healing.self + heal.healing.allies, heal), 1), TEXT.results.inSeconds(format(heal.duration, 1)), "#6dff9a")}
       </div>
@@ -366,13 +370,11 @@
         <span class="seq-dmg"><b class="outline">${format(background, 0)}</b><i>${format((background / total) * 100, 0)}%</i></span></div>` : "";
     const sources = Object.keys(SOURCE_COLORS).filter((source) => report.bySource[source] > 0.0005);
     const sequenceTab = `<div class="res-card">
-        <div class="res-title outline">${TEXT.results.yourSequence} <span class="muted">· ${TEXT.results.clickStep}</span></div>
+        <div class="res-title outline" title="${TEXT.results.clickStep}">${TEXT.results.yourSequence}</div>
         <div class="seq-results">${stepRows(A, state, report, (step) => [format(step.damage, 0), `${format((step.damage / total) * 100, 0)}%`], true) || `<div class="muted">${TEXT.results.noSteps}</div>`}${backgroundRow}</div>
         ${report.duration > 0 ? chart(report) : ""}
         <div class="legend">${sources.map((source) => `<span><i style="background:${SOURCE_COLORS[source]}"></i>${TEXT.results.sources[source] || source} ${format((report.bySource[source] / total) * 100, 0)}%</span>`).join("")}</div>
         ${Object.keys(report.byType).length ? `<div class="sub-h outline">${TEXT.results.byType}</div><div class="bars">${typeBars(escape, report.byType)}</div>` : ""}
-        <div class="muted">${TEXT.results.swingNote(format(state.catalog.swingTime, 3))}</div>
-        <div class="muted">${TEXT.results.spread(format(report.spread.low, 0), format(report.spread.high, 0), report.runs)}</div>
       </div>`;
     const body = tab === "sequence" ? sequenceTab : tab === "detail" ? detailTab(A, state) : tab === "uptime" ? uptimeCard(A, report, null) : perksCard(A, state);
     return `<div class="res-tabs mode-tabs">
@@ -412,7 +414,7 @@
     return `${picker}<div class="res-card">
       <div class="res-title outline">${escape(name)}</div>
       <div class="big-row">
-        <div><span class="lab">${TEXT.results.oneUse}</span><b class="big outline">${format(average.damage)}</b><span class="muted">${extra > 0.05 ? TEXT.results.oneUseSub(format(main), format(extra)) : TEXT.results.averaged}</span></div>
+        <div><span class="lab">${key === "m1" ? TEXT.results.fullCombo : TEXT.results.oneUse}</span><b class="big outline">${format(average.damage)}</b><span class="muted">${extra > 0.05 ? TEXT.results.oneUseSub(format(main), format(extra)) : TEXT.results.averaged}</span></div>
         <div><span class="lab">${TEXT.results.normalCrit}</span><b class="mid outline">${format(details.normal.damage)}</b><b class="mid outline" style="color:#ffd84a">${format(details.critical.damage)}</b></div>
       </div>
       <div class="bars">${typeBars(escape, average.byType)}</div>
@@ -756,6 +758,12 @@
       writeSetting(settings(), field.dataset.path, readInput(field));
       changed(false);
     });
+    root.addEventListener("toggle", (event) => {
+      const id = event.target.dataset && event.target.dataset.fold;
+      if (!id) return;
+      if (event.target.open) interfaceState.openFolds.add(id); else interfaceState.openFolds.delete(id);
+      saveInterface();
+    }, true);
     root.addEventListener("change", (event) => {
       const element = event.target;
       if (element.matches("[data-rule-section]")) {

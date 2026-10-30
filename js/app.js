@@ -7,6 +7,7 @@
   const $ = (id) => document.getElementById(id);
 
   const itemById = Object.fromEntries(D.items.map((i) => [i.id, i]));
+  const SEARCH_STATS = [...new Set(D.items.concat(D.parts).flatMap((entry) => Object.keys(entry.stats || {})))];
   const enchByName = Object.fromEntries(D.enchants.map((e) => [e.name, e]));
   const STORE_KEY = "voxlbuilder:v1";
   const MAX_LVL = 5;
@@ -413,7 +414,7 @@
 
   function renderDracGrid(q) {
     const dr = M.draconic(build());
-    const list = M.DRACONIC.abilities.filter((x) => !q || x.name.toLowerCase().includes(q));
+    const list = M.DRACONIC.abilities.filter((x) => window.VoxlSearch.matches(q, { text: window.VoxlSearch.entryText([x.name, x.text], [], perkInfo), stats: {} }));
     $("itemGrid").innerHTML = list.length ? list.map((x) => {
       const id = dracId(x), locked = x.rank > dr.rank;
       return `<button class="tile${ui.selected === id ? " selected" : ""}${locked ? " locked" : ""}" data-item="${id}" role="option" aria-selected="${ui.selected === id}"${locked ? ` title="Unlocked at Draconic rank ${x.rank}"` : ""}>
@@ -424,7 +425,8 @@
   }
 
   function renderGrid() {
-    const q = ui.search.trim().toLowerCase();
+    const q = window.VoxlSearch.parse(ui.search, SEARCH_STATS);
+    const sortStat = ui.sort || window.VoxlSearch.filterStat(q);
     if (isDracInf()) {
       renderDracGrid(q);
       $("favOnly").setAttribute("aria-pressed", String(ui.favOnly));
@@ -435,22 +437,21 @@
     const t = target();
     let list = slotItems().filter((i) => {
       if (ui.favOnly && !fav.has(i.id)) return false;
-      if (!q) return true;
-      const perkNames = i.perks.map((p) => perkInfo(p.id).name).join(" ");
-      return (i.name + " " + (i.set || "") + " " + perkNames).toLowerCase().includes(q);
+      if (!q.length) return true;
+      return window.VoxlSearch.matches(q, { text: window.VoxlSearch.entryText([i.name, i.set, i.desc, i.details || []], i.perks, perkInfo), stats: i.stats });
     });
-    if (ui.sort) {
-      list.sort((a, b) => (b.stats[ui.sort] || 0) - (a.stats[ui.sort] || 0) || a.name.localeCompare(b.name));
+    if (sortStat) {
+      list.sort((a, b) => (b.stats[sortStat] || 0) - (a.stats[sortStat] || 0) || a.name.localeCompare(b.name));
     } else {
       list.sort((a, b) => (fav.has(b.id) - fav.has(a.id)) || a.name.localeCompare(b.name));
     }
     $("itemGrid").innerHTML = list.length ? list.map((i) => {
-      const v = ui.sort && i.stats[ui.sort];
+      const v = sortStat && i.stats[sortStat];
       return `<button class="tile${ui.selected === i.id ? " selected" : ""}" data-item="${esc(i.id)}" role="option" aria-selected="${ui.selected === i.id}">
         ${t && t.id === i.id ? `<span class="badge eq outline">E</span>` : ""}
         ${fav.has(i.id) ? `<span class="badge fav outline">★</span>` : ""}
         ${portrait(img(i.image, i.name))}
-        ${v ? `<span class="badge val" style="color:${STAT_COLORS[ui.sort] || "#fff"}">${C.fmtStat(ui.sort, v)}</span>` : ""}
+        ${v ? `<span class="badge val" style="color:${STAT_COLORS[sortStat] || "#fff"}">${C.fmtStat(sortStat, v)}</span>` : ""}
         <span class="tname">${esc(i.name)}</span></button>`;
     }).join("") : `<div class="grid-empty outline">NO ITEMS FOUND</div>`;
     $("favOnly").setAttribute("aria-pressed", String(ui.favOnly));
@@ -903,7 +904,7 @@
 
   // ------------------------------------------------------------ views
   const api = {
-    D, C, E, M, Engine, $, esc, img, portrait, ui, build, save, commit, totalsOf, perkInfo, statLine, nameHTML, renderDesc,
+    D, C, E, M, Engine, SEARCH_STATS, $, esc, img, portrait, ui, build, save, commit, totalsOf, perkInfo, statLine, nameHTML, renderDesc,
   };
   window.VoxlApp = api;
   window.VoxlViews.char.bind(api);

@@ -164,7 +164,7 @@
       <label class="toggle"><input type="checkbox" data-shrine ${w.shrine ? "checked" : ""}> <span>Shrine of Balance <span class="muted">(only if you used it in game)</span></span></label>
       ${partsOpen ? `<div class="parts-box">
         <div class="filters">
-          <input class="search" id="partSearch" type="search" placeholder="Search ${PART_LABEL[ui.partKind].toLowerCase()}s…" value="${esc(ui.partSearch || "")}" autocomplete="off">
+          <input class="search" id="partSearch" type="search" placeholder="Search ${PART_LABEL[ui.partKind].toLowerCase()}s…" title="Words match names, descriptions, perks and tags. #stat filters by a stat, like #physical&gt;10, #speed&lt;0 or #warding. Put - before a word to exclude it." value="${esc(ui.partSearch || "")}" autocomplete="off">
           <select class="sort" id="partSort" title="Sort parts">
             <option value="">Sort: A–Z</option><option value="tier"${ui.partSort === "tier" ? " selected" : ""}>Tier</option>
             <option value="speed"${ui.partSort === "speed" ? " selected" : ""}>Attack speed</option>
@@ -200,10 +200,13 @@
     const { esc, img, D } = A;
     const ui = A.ui;
     const w = A.build().weapon;
-    const q = (ui.partSearch || "").toLowerCase();
-    let list = D.parts.filter((p) => p.kind === ui.partKind && (!q || (p.name + " " + p.partType).toLowerCase().includes(q)));
+    const q = window.VoxlSearch.parse(ui.partSearch, A.SEARCH_STATS);
+    const filterStat = window.VoxlSearch.filterStat(q);
+    let list = D.parts.filter((p) => p.kind === ui.partKind
+      && window.VoxlSearch.matches(q, { text: window.VoxlSearch.entryText([p.name, p.partType, Object.keys(p.types || {})], p.perks, A.perkInfo), stats: p.stats || {} }));
     if (ui.partSort === "tier") list.sort((a, b) => b.tier - a.tier || a.name.localeCompare(b.name));
     else if (ui.partSort === "speed") list.sort((a, b) => b.attackSpeed - a.attackSpeed || a.name.localeCompare(b.name));
+    else if (filterStat) list.sort((a, b) => (b.stats[filterStat] || 0) - (a.stats[filterStat] || 0) || a.name.localeCompare(b.name));
     else list.sort((a, b) => a.name.localeCompare(b.name));
     A.$("partGrid").innerHTML = list.length ? list.map((p) => `
       <button class="tile${w[p.kind] === p.id ? " selected" : ""}" data-part="${esc(p.id)}" data-ent="part:${esc(p.id)}">

@@ -147,11 +147,12 @@
 
   function contextVariables(context) {
     const variables = Object.create(context.profile.variables);
+    const stepCondition = (id) => (context.stepConditions && context.stepConditions[id] !== undefined ? context.stepConditions[id] : context.profile.conditions[id]);
     const getters = {
       time: () => context.time,
       selfHp: () => (context.options.simulateHp ? 100 * context.self.hp / context.self.maxHp : context.profile.conditions.selfHp),
       currentHp: () => context.self.hp,
-      targetHp: () => (context.target.pool ? 100 * Math.max(0, context.target.hp) / context.target.maxHp : context.profile.conditions.targetHp),
+      targetHp: () => (context.target.pool ? 100 * Math.max(0, context.target.hp) / context.target.maxHp : stepCondition("targetHp")),
       selfDebuffs: () => countKind("self", "debuff"),
       selfBuffs: () => countKind("self", "buff"),
       targetDebuffs: () => countKind("target", "debuff"),
@@ -168,6 +169,8 @@
       lastCroak: () => context.profile.conditions.lastCroak,
       gatheringTideStart: () => context.profile.variables.gatheringTideStart,
     };
+    context.profile.rules.core.conditions.filter((condition) => condition.scope === "step" && !getters[condition.id])
+      .forEach((condition) => { getters[condition.id] = () => stepCondition(condition.id); });
     Object.entries(getters).forEach(([name, getter]) => Object.defineProperty(variables, name, { get: getter, enumerable: true }));
     return variables;
   }

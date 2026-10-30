@@ -51,7 +51,7 @@
     const rules = window.VoxlRules.current();
     const values = {};
     rules.core.conditions.forEach((condition) => {
-      const saved = settings.conditions ? settings.conditions[condition.id] : undefined;
+      const saved = settings.conditions && condition.scope !== "step" ? settings.conditions[condition.id] : undefined;
       if (condition.type === "boolean") values[condition.id] = saved === undefined ? !!condition.default : !!saved;
       else values[condition.id] = typeof saved === "number" && Number.isFinite(saved) ? saved : condition.default;
     });

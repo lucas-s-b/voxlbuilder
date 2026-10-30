@@ -94,6 +94,22 @@
     return list;
   }
 
+  const ATTACK_SPECIFIC_EFFECTS = { replaceM2: ["m2"], chargeM2: ["m2"], override: ["art", "rune"], extraAction: ["special"] };
+
+  function stepConditions(state, key) {
+    const rules = Rules.current();
+    const action = state.catalog.actions[key];
+    const sourceName = (id) => (id.startsWith("race:") ? ((window.VOXL_DATA.races || []).find((race) => "race:" + race.id === id) || { name: id }).name : perkName(id));
+    const perkSources = Object.keys(state.profile.perks).map((id) => [sourceName(id), ((rules.perks[id] || {}).effects || [])
+      .filter((effect) => !ATTACK_SPECIFIC_EFFECTS[effect.type] || ATTACK_SPECIFIC_EFFECTS[effect.type].includes(key))]);
+    const statusSources = state.catalog.statuses.map((status) => [status.name, rules.core.statuses[status.id]]);
+    const ownSources = action && (action.rule || action.special) ? [[action.name, action.rule || action.special]] : [];
+    const sources = perkSources.concat(statusSources, ownSources).map(([name, entry]) => [name, formulaNames([entry])]);
+    return rules.core.conditions.filter((condition) => condition.scope === "step")
+      .map((condition) => ({ ...condition, sources: [...new Set(sources.filter(([, names]) => names.has(condition.id)).map(([name]) => name))] }))
+      .filter((condition) => condition.sources.length);
+  }
+
   const statusList = (state) => state.catalog.statuses.map((status) => [`status:${status.id}`, status.name, status.kind === "debuff" ? TEXT.picker.debuffOnEnemy : TEXT.picker.buffOnYou, "", status.kind]);
   const stepLookup = (A, state) => Object.fromEntries(actionList(A, state).concat(statusList(state)).map((entry) => [entry[0], entry]));
 
@@ -143,6 +159,21 @@
         <span class="seq-charge-val">${TEXT.chargeLabel(Math.round(charge * 100), format(charge * seconds, 1))}</span></div>`;
     };
     const listAttribute = `data-list="${listKey}"`;
+    const conditionsByKey = {};
+    const paramsFrame = (step, index) => {
+      const conditions = actionByKey[step.a] && !step.a.startsWith("status:") && step.a !== "wait"
+        ? conditionsByKey[step.a] || (conditionsByKey[step.a] = stepConditions(state, step.a)) : [];
+      const valueOf = (condition) => (step.k && step.k[condition.id] !== undefined ? step.k[condition.id] : condition.default);
+      const inputs = conditions.map((condition) => {
+        const field = `data-step-cond="${index}" data-cond="${condition.id}" ${listAttribute} id="step-${index}-${condition.id}"`;
+        const input = condition.type === "boolean"
+          ? `<input type="checkbox" ${field} ${valueOf(condition) ? "checked" : ""}>`
+          : `<input class="num" type="number" ${field} value="${valueOf(condition)}" step="${condition.step}" min="${condition.min}" max="${condition.max}">`;
+        return `<label class="seq-param-label" for="step-${index}-${condition.id}"><span>${escape(condition.label)}</span><i>${escape(condition.sources.join(", "))}</i></label><span class="seq-param-value">${input}</span>`;
+      }).join("");
+      const charge = chargeRow(step, index, listAttribute);
+      return charge || inputs ? `<div class="seq-params">${charge}${inputs}</div>` : "";
+    };
     const stepRows = steps.map((step, index) => {
       const action = actionByKey[step.a];
       return `<div class="seq-step${action ? "" : " missing"}">
@@ -159,7 +190,7 @@
           <button class="mv" data-seq-move="${index}" ${listAttribute} data-dir="-1" ${index === 0 ? "disabled" : ""} aria-label="▲">▲</button>
           <button class="mv" data-seq-move="${index}" ${listAttribute} data-dir="1" ${index === steps.length - 1 ? "disabled" : ""} aria-label="▼">▼</button>
           <button class="mv del" data-seq-del="${index}" ${listAttribute} aria-label="✕">✕</button>
-        </span>${chargeRow(step, index, listAttribute)}</div>`;
+        </span>${paramsFrame(step, index)}</div>`;
     }).join("");
     const addButton = ([key, name, subtitle, icon], extra) => `<button class="seq-add" data-seq-add="${key}" ${listAttribute} ${extra || ""} title="${escape(subtitle)}">${icon ? `<span class="seq-ico portrait sm">${icon}</span>` : ""}<span>${escape(name)}</span></button>`;
     const attackButtons = actions.map((action) => addButton(action)
@@ -249,7 +280,7 @@
     const alwaysOn = owned.filter(([id]) => !rules.perks[id].situational && !id.startsWith("race:"));
     const perkRow = ([id, amount], path, on) => `<div class="buff-row">${inputs.checkbox(path, on, `<b>${escape(perkName(id))}</b> <span class="muted">+${format(amount, 2)}</span>`)}</div>`;
     const usedNames = formulaNames(Object.keys(profile.perks).map((id) => rules.perks[id]).filter(Boolean));
-    const conditionRows = rules.core.conditions.filter((condition) => usedNames.has(condition.id)).map((condition) => {
+    const conditionRows = rules.core.conditions.filter((condition) => condition.scope !== "step" && usedNames.has(condition.id)).map((condition) => {
       const value = profile.conditions[condition.id];
       if (condition.type === "boolean") return inputs.checkbox(`conditions.${condition.id}`, value, escape(condition.label));
       return `<label class="sit"><span>${escape(condition.label)}</span>${inputs.numberInput(`conditions.${condition.id}`, value, `step="${condition.step}" min="${condition.min}" max="${condition.max}"`)}</label>`;
@@ -756,6 +787,13 @@
         const charge = Math.max(0, Math.min(1, (+element.value || 0) / 100));
         if (charge > 0) step.c = charge; else delete step.c;
         element.nextElementSibling.textContent = TEXT.chargeLabel(Math.round(charge * 100), format(charge * +element.dataset.time, 1));
+        return changed(false);
+      }
+      if (element.dataset.stepCond !== undefined) {
+        const step = (settings()[element.dataset.list] || [])[+element.dataset.stepCond];
+        const value = element.type === "checkbox" ? element.checked : parseFloat(element.value);
+        if (!step || (typeof value === "number" && !Number.isFinite(value))) return;
+        step.k = { ...(step.k || {}), [element.dataset.cond]: value };
         return changed(false);
       }
       if (element.dataset.seqP !== undefined || element.dataset.seqD !== undefined) {

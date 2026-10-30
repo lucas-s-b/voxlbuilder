@@ -429,6 +429,7 @@
       const item = items[position++];
       const step = steps[item.stepIndex];
       context.stepIndex = item.stepIndex;
+      context.stepConditions = options.steps[item.stepIndex].k || null;
       if (item.wait) {
         context.comboIndex = 0;
         if (step.start === null) step.start = context.time;
@@ -463,6 +464,7 @@
       step.end = context.time;
     }
     context.stepIndex = -1;
+    context.stepConditions = null;
     if (repeat) return end;
     return Math.max(context.time, context.lastHitDue);
   }
@@ -584,10 +586,12 @@
     return average(reports);
   }
 
-  function detailSteps(profile, key) {
-    if (key !== "m1") return [{ a: key, n: 1 }];
+  function detailSteps(profile, key, sequence) {
+    const conditions = ((sequence || []).find((step) => step.a === key && step.k) || {}).k;
+    const extra = conditions ? { k: conditions } : {};
+    if (key !== "m1") return [{ a: key, n: 1, ...extra }];
     const swings = (profile.form.m1Rule && profile.form.m1Rule.m1) || [];
-    return swings.map((swing, index) => ({ a: "swing:" + index, n: 1 }));
+    return swings.map((swing, index) => ({ a: "swing:" + index, n: 1, ...extra }));
   }
 
   function tracedRun(profile, options, crit) {
@@ -601,7 +605,7 @@
   }
 
   function hitDetails(profile, options, key) {
-    const detailOptions = { ...options, mode: "dps", steps: detailSteps(profile, key), repeat: false, incoming: null, simulateHp: false, minimumDuration: 0 };
+    const detailOptions = { ...options, mode: "dps", steps: detailSteps(profile, key, options.steps), repeat: false, incoming: null, simulateHp: false, minimumDuration: 0 };
     const averaged = simulate(profile, detailOptions);
     const normal = tracedRun(profile, detailOptions, "never");
     const critical = tracedRun(profile, detailOptions, "always");

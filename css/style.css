@@ -872,7 +872,7 @@ a { color: #8fd3ff; }
 .seq-name b { font-size: 14.5px; color: var(--plate-ink); overflow-wrap: anywhere; }
 .seq-name i { font-style: normal; font-size: 12.5px; font-weight: 600; color: var(--plate-ink-2); overflow-wrap: anywhere; }
 .seq-n { display: flex; align-items: center; gap: 3px; }
-.seq-n .num { width: 52px; }
+.seq-n .num { width: 60px; }
 .seq-btns { display: flex; gap: 2px; }
 .mv { width: 24px; height: 24px; padding: 0; font-size: 11px; line-height: 1; color: #fff3dc; background: #4a3620; border: 2px solid #1a1007; box-shadow: inset 0 0 0 1px #7a5c38; cursor: pointer; }
 .mv:hover:not(:disabled) { background: #6b4d2b; }
@@ -1012,3 +1012,10 @@ a { color: #8fd3ff; }
 .step-picker > summary::-webkit-details-marker { display: none; }
 .step-picker-panel { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); max-height: 380px; overflow-y: auto; padding: 8px; background: #fff4dc; border: 2px solid #1a1007; box-shadow: 0 6px 16px #0006; }
 .step-picker-panel .seq-adds { margin: 4px 0 8px; }
+.seq-params { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 10px; margin: 2px -6px -4px; padding: 6px; background: #f3e2bd; border-top: 2px solid #c9ad80; }
+.seq-params .seq-charge { grid-column: 1 / -1; padding: 0; }
+.seq-param-label { font-size: 13px; font-weight: 700; color: var(--plate-ink); cursor: pointer; display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.seq-param-label i { font-style: normal; font-size: 12px; font-weight: 600; color: var(--plate-ink-2); overflow-wrap: anywhere; }
+.seq-param-value { display: flex; justify-content: center; width: 60px; }
+.seq-param-value .num { width: 100%; }
+.seq-param-value input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: #4a8f3a; }

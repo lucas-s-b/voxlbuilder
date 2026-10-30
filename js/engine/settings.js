@@ -40,6 +40,7 @@
         ...(step.a === "wait" ? { w: clamp(+step.w || 1, 0.1, 60) } : {}),
         ...(step.a.startsWith("status:") ? { p: clamp(+step.p || 0, 0, 100), ...(+step.d > 0 ? { d: clamp(+step.d, 0.1, 600) } : {}) } : {}),
         ...(+step.c > 0 ? { c: clamp(Math.round(+step.c * 100) / 100, 0, 1) } : {}),
+        ...(step.k && typeof step.k === "object" ? { k: plainObject(step.k, (value) => typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) } : {}),
       }));
   }
 

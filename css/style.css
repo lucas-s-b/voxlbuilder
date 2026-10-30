@@ -1005,3 +1005,10 @@ a { color: #8fd3ff; }
   background: #1f160d; color: #fff3dc; border: 2px solid #1a1007; padding: 8px; tab-size: 2; }
 .rule-code { display: block; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #f3e6cc; }
 @media (max-width: 560px) { .test-modes { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.seq-ico.blank { background: none; box-shadow: none; }
+.step-picker { position: relative; margin: 2px 0 8px; }
+.cv-sec details.step-picker { background: transparent !important; box-shadow: none !important; padding: 0; }
+.step-picker > summary { display: inline-block; list-style: none; cursor: pointer; }
+.step-picker > summary::-webkit-details-marker { display: none; }
+.step-picker-panel { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); max-height: 380px; overflow-y: auto; padding: 8px; background: #fff4dc; border: 2px solid #1a1007; box-shadow: 0 6px 16px #0006; }
+.step-picker-panel .seq-adds { margin: 4px 0 8px; }

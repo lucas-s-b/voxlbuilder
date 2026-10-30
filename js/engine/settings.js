@@ -34,10 +34,11 @@
   function cleanSteps(list, customIds) {
     return list.slice(0, 30).filter(Boolean)
       .map((step) => (step.a === "m2c" ? { ...step, a: "m2", c: 1 } : step.a === "custom" && customIds.length ? { ...step, a: customIds[0] } : step))
-      .filter((step) => STEP_ACTIONS.includes(step.a) || customIds.includes(step.a))
+      .filter((step) => STEP_ACTIONS.includes(step.a) || customIds.includes(step.a) || /^status:[a-z0-9-]+$/i.test(step.a))
       .map((step) => ({
-        a: step.a, n: clamp(Math.round(+step.n || 1), 1, 50),
+        a: step.a, n: step.a.startsWith("status:") ? 1 : clamp(Math.round(+step.n || 1), 1, 50),
         ...(step.a === "wait" ? { w: clamp(+step.w || 1, 0.1, 60) } : {}),
+        ...(step.a.startsWith("status:") ? { p: clamp(+step.p || 0, 0, 100), ...(+step.d > 0 ? { d: clamp(+step.d, 0.1, 600) } : {}) } : {}),
         ...(+step.c > 0 ? { c: clamp(Math.round(+step.c * 100) / 100, 0, 1) } : {}),
       }));
   }
@@ -93,7 +94,7 @@
     const [listKey, repeatKey, durationKey] = SEQUENCES[mode];
     const enemy = settings.enemy ? (window.VOXL_DATA.enemies || []).find((entry) => entry.id === settings.enemy) : null;
     const options = {
-      mode, steps: settings[listKey] || [], repeat: !!settings[repeatKey], duration: settings[durationKey] || 30, runs: settings.runs,
+      mode, steps: settings[listKey] || [], repeat: mode !== "dps" && !!settings[repeatKey], manual: mode === "dps", duration: settings[durationKey] || 30, runs: settings.runs,
       targetDefenses: { ...settings.target },
     };
     if (mode === "tank") {

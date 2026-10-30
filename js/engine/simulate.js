@@ -371,6 +371,7 @@
       const uses = Math.max(1, Math.min(50, Math.round(+step.n || 1)));
       for (let use = 0; use < uses; use++) {
         if (step.a === "wait") items.push({ stepIndex, wait: Math.max(0, Math.min(60, +step.w || 1)), first: use === 0 });
+        else if (step.a.startsWith("status:")) items.push({ stepIndex, status: step.a.slice(7), potency: +step.p || 0, duration: +step.d > 0 ? +step.d : 1e6, first: use === 0, last: true });
         else if (step.a.startsWith("swing:") && actions.m1) items.push({ stepIndex, key: "m1", swing: actions.m1.swings[+step.a.slice(6)], first: true, last: true });
         else items.push({ stepIndex, key: step.a, charge: +step.c || 0, first: use === 0, last: true });
       }
@@ -436,8 +437,17 @@
         step.uses++;
         continue;
       }
+      if (item.status) {
+        const definition = context.profile.rules.core.statuses[item.status];
+        if (step.start === null) step.start = context.time;
+        combat.applyStatus(context, definition && definition.kind === "debuff" ? "target" : "self", item.status, item.potency, item.duration,
+          { sourceName: "start", noPotencyBonus: true, noDurationBonus: true, setPotency: true });
+        step.end = context.time;
+        step.uses++;
+        continue;
+      }
       if (!actions[item.key]) { step.note = "missing"; continue; }
-      const ready = readyAt(context, actions, item);
+      const ready = options.manual ? context.time : readyAt(context, actions, item);
       if (ready > context.time + 1e-9) {
         if (repeat) { step.skipped++; continue; }
         step.waited += ready - context.time;
@@ -482,6 +492,12 @@
     const fightEnd = runSequence(context, actions);
     const end = Math.max(fightEnd, options.minimumDuration || 0);
     combat.advanceTo(context, end);
+    if (options.manual) {
+      const dotEnds = Object.entries(context.target.statuses)
+        .filter(([id, status]) => profile.rules.core.statuses[id] && profile.rules.core.statuses[id].dot && status.until > end && status.until < end + 600)
+        .map(([, status]) => status.until);
+      combat.advanceTo(context, Math.max(end, ...dotEnds));
+    }
     context.report.duration = end;
     context.report.errors = [...context.errors];
     context.report.endStatuses = snapshotStatuses(context);
@@ -612,9 +628,27 @@
     ["art", "rune", "drac"].forEach((key) => { if (actions[key]) plans[key] = abilityPlan(context, actions[key], 0); });
     const probe = actions.m1 ? actions.m1.swings[0] : actions.m2.attack;
     const speed = combat.attackSpeed(context, probe, "weapon");
-    const result = { actions, plans, speed, swingTime: swingTime(context, probe, profile.settings), energyMax: context.energyMax };
+    const result = { actions, plans, speed, swingTime: swingTime(context, probe, profile.settings), energyMax: context.energyMax, statuses: statusSources(profile, actions) };
     combat.active.context = null;
     return result;
+  }
+
+  function statusSources(profile, actions) {
+    const definitions = profile.rules.core.statuses;
+    const found = new Set();
+    const visit = (value) => {
+      if (Array.isArray(value)) return value.forEach(visit);
+      if (!value || typeof value !== "object") return;
+      if (typeof value.status === "string") found.add(value.status);
+      if (value.type === "statusConvert" && typeof value.to === "string") found.add(value.to);
+      Object.values(value).forEach(visit);
+    };
+    visit(Object.keys(profile.perks).map((id) => profile.rules.perks[id]));
+    visit(["art", "rune", "drac", "special", "potion"].map((key) => actions[key] && (actions[key].rule || actions[key].special)));
+    visit(Object.entries(profile.settings.potions || {}).filter(([, on]) => on).map(([id]) => profile.rules.attacks.potions[id]));
+    return [...found].filter((id) => definitions[id] && !definitions[id].hidden)
+      .map((id) => ({ id, name: definitions[id].name, kind: definitions[id].kind === "debuff" ? "debuff" : "buff" }))
+      .sort((first, second) => first.name.localeCompare(second.name));
   }
 
   function incomingFrom(settings, enemy) {

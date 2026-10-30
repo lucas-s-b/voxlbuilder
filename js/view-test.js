@@ -94,6 +94,9 @@
     return list;
   }
 
+  const statusList = (state) => state.catalog.statuses.map((status) => [`status:${status.id}`, status.name, status.kind === "debuff" ? TEXT.picker.debuffOnEnemy : TEXT.picker.buffOnYou, "", status.kind]);
+  const stepLookup = (A, state) => Object.fromEntries(actionList(A, state).concat(statusList(state)).map((entry) => [entry[0], entry]));
+
   function chargeSeconds(state, key) {
     const catalog = state.catalog;
     if (key === "m2" && catalog.actions.m2.charge) {
@@ -126,10 +129,11 @@
     };
 
     const actions = actionList(A, state);
-    const actionByKey = Object.fromEntries(actions.map((action) => [action[0], action]));
+    const statuses = statusList(state);
+    const actionByKey = stepLookup(A, state);
     const [listKey, repeatKey, durationKey] = sequenceKeys(mode);
     const steps = Array.isArray(settings[listKey]) ? settings[listKey] : [];
-    const summaryOf = (list) => list.map((step) => (actionByKey[step.a] ? actionByKey[step.a][1] : step.a) + (step.a === "wait" ? ` ${step.w || 1}s` : step.n > 1 ? ` ×${step.n}` : "")).join(" → ");
+    const summaryOf = (list) => list.map((step) => (actionByKey[step.a] ? actionByKey[step.a][1] : step.a) + (step.a === "wait" ? ` ${step.w || 1}s` : step.a.startsWith("status:") ? ` ${step.p || 0}` : step.n > 1 ? ` ×${step.n}` : "")).join(" → ");
     const chargeRow = (step, index, listAttribute) => {
       const seconds = chargeSeconds(state, step.a);
       if (!seconds) return "";
@@ -143,27 +147,36 @@
       const action = actionByKey[step.a];
       return `<div class="seq-step${action ? "" : " missing"}">
         <span class="seq-num outline">${index + 1}</span>
-        <span class="seq-ico portrait sm">${action ? action[3] : ""}</span>
+        <span class="seq-ico${action && action[3] ? " portrait sm" : " blank"}">${action ? action[3] : ""}</span>
         <span class="seq-name" title="${escape(action ? action[2] : TEXT.notInBuild)}"><b>${escape(action ? action[1] : step.a)}</b>${action ? "" : `<i>${TEXT.notInBuild}</i>`}</span>
         <span class="seq-n">${step.a === "wait"
           ? `<input class="num" type="number" data-seq-w="${index}" ${listAttribute} value="${step.w || 1}" step="0.5" min="0.1" max="60" aria-label="${TEXT.seconds}"><span class="muted">s</span>`
-          : `<span class="muted">×</span><input class="num" type="number" data-seq-n="${index}" ${listAttribute} value="${step.n || 1}" step="1" min="1" max="50" aria-label="×">`}</span>
+          : step.a.startsWith("status:")
+            ? `<input class="num" type="number" data-seq-p="${index}" ${listAttribute} value="${step.p || 0}" step="0.05" min="0" max="100" title="${TEXT.buffs.potency}" aria-label="${TEXT.buffs.potency}">
+              <input class="num" type="number" data-seq-d="${index}" ${listAttribute} value="${step.d || ""}" step="1" min="0.1" max="600" placeholder="${TEXT.picker.durationPlaceholder}" title="${TEXT.picker.durationHelp}" aria-label="${TEXT.picker.duration}"><span class="muted">s</span>`
+            : `<span class="muted">×</span><input class="num" type="number" data-seq-n="${index}" ${listAttribute} value="${step.n || 1}" step="1" min="1" max="50" aria-label="×">`}</span>
         <span class="seq-btns">
           <button class="mv" data-seq-move="${index}" ${listAttribute} data-dir="-1" ${index === 0 ? "disabled" : ""} aria-label="▲">▲</button>
           <button class="mv" data-seq-move="${index}" ${listAttribute} data-dir="1" ${index === steps.length - 1 ? "disabled" : ""} aria-label="▼">▼</button>
           <button class="mv del" data-seq-del="${index}" ${listAttribute} aria-label="✕">✕</button>
         </span>${chargeRow(step, index, listAttribute)}</div>`;
     }).join("");
-    const addButtons = actions.map(([key, name, subtitle, icon]) => `<button class="seq-add" data-seq-add="${key}" ${listAttribute} title="${escape(subtitle)}"><span class="seq-ico portrait sm">${icon}</span><span>${escape(name)}</span></button>`).join("");
+    const addButton = ([key, name, subtitle, icon], extra) => `<button class="seq-add" data-seq-add="${key}" ${listAttribute} ${extra || ""} title="${escape(subtitle)}">${icon ? `<span class="seq-ico portrait sm">${icon}</span>` : ""}<span>${escape(name)}</span></button>`;
+    const attackButtons = actions.map((action) => addButton(action)
+      + (action[0] === "m2" && catalog.actions.m2.charge ? addButton(["m2", TEXT.picker.chargedM2, action[2], action[3]], 'data-charge="1"') : "")).join("");
     const sequenceEditor = `
       <div class="seq-list">${stepRows || `<div class="seq-empty">${TEXT.emptySequence[mode]}</div>`}</div>
-      <div class="sub-h outline">${TEXT.addStep}</div>
-      <div class="seq-adds">${addButtons}</div>
-      <div class="seq-mode">
+      <details class="step-picker"><summary class="mode-tab outline">${TEXT.picker.open}</summary>
+        <div class="step-picker-panel">
+          <div class="sub-h outline">${TEXT.picker.attacks}</div><div class="seq-adds">${attackButtons}</div>
+          <div class="sub-h outline">${TEXT.picker.statuses}</div>
+          ${statuses.length ? `<div class="seq-adds">${statuses.map((status) => addButton(status)).join("")}</div>` : `<div class="muted">${TEXT.picker.noStatuses}</div>`}
+        </div></details>
+      ${mode === "dps" ? "" : `<div class="seq-mode">
         ${setButton(repeatKey, "", TEXT.runOnce, !settings[repeatKey], `data-bool="0" title="${TEXT.onceHelp}"`)}
         ${setButton(repeatKey, "1", TEXT.repeatFor, !!settings[repeatKey], `data-bool="1" title="${TEXT.repeatHelp}"`)}
         ${settings[repeatKey] ? `${numberInput(durationKey, settings[durationKey], 'step="5" min="5" max="300"')}<span class="muted">${TEXT.seconds}</span>` : ""}
-      </div>
+      </div>`}
       ${catalog.actions.special && catalog.actions.special.choices.length > 1 ? `<div class="opt-row"><span class="lab">${TEXT.specialAttack}</span>${select("special", catalog.actions.special.choices, catalog.actions.special.special.id)}</div>` : ""}
       ${fold("customs", TEXT.customAttacks((settings.customs || []).length), `${(settings.customs || []).map((custom) => `<div class="custom-card">
         <div class="custom-top"><input class="search" data-custom="${custom.id}" data-field="name" value="${escape(custom.name)}" maxlength="30" aria-label="${escape(custom.name)}">
@@ -326,7 +339,7 @@
     box.innerHTML = `
       <div class="kpis">
         ${kpi("dps", TEXT.results.total, format(dps.damage, 0), TEXT.results.inSeconds(format(dps.duration, 2)), "#fff3dc", TEXT.results.spread(format(dps.spread.low, 0), format(dps.spread.high, 0), dps.runs))}
-        ${kpi("dps", TEXT.results.dps, format(perSecond(dps.damage, dps)), TEXT.results.overFight, "#6dff9a", TEXT.results.swingNote(format(state.catalog.swingTime, 3)))}
+        ${kpi("dps", TEXT.results.dps, format(perSecond(dps.damage, dps)), TEXT.results.estimated, "#6dff9a", TEXT.results.estimatedHelp)}
         ${kpi("tank", TEXT.results.taken, format(perSecond(tank.taken.total, tank), 1), TEXT.results.inSeconds(format(tank.duration, 0)), "#ff9a9a")}
         ${kpi("heal", TEXT.results.healed, format(perSecond(heal.healing.self + heal.healing.allies, heal), 1), TEXT.results.inSeconds(format(heal.duration, 1)), "#6dff9a")}
       </div>
@@ -341,19 +354,20 @@
 
   function stepRows(A, state, report, value, clickable) {
     const escape = A.esc;
-    const actionByKey = Object.fromEntries(actionList(A, state).map((action) => [action[0], action]));
+    const actionByKey = stepLookup(A, state);
     return (report.steps || []).map((step) => {
       const action = actionByKey[step.action];
       const name = action ? action[1] : step.action;
+      const passive = step.action === "wait" || step.action.startsWith("status:");
       const when = step.start === null ? TEXT.results.notUsed : `${format(step.start, 2)}s → ${format(step.end === null ? step.start : step.end, 2)}s`;
       const notes = [
         step.uses > 1.001 ? `×${format(step.uses, 1)}` : "", step.waited > 0.005 ? TEXT.results.waited(format(step.waited, 2)) : "",
         step.skipped > 0.05 ? (step.note === "energy" ? TEXT.results.energySkip : TEXT.results.skipped(format(step.skipped, 1))) : "", step.note === "missing" ? TEXT.results.missing : "",
       ].filter(Boolean).join(" · ");
-      const [big, small] = step.action === "wait" ? ["", ""] : value(step);
-      const attributes = clickable && step.action !== "wait" ? `data-detail="${escape(step.action)}"` : "";
-      return `<button class="seq-res${clickable ? "" : " static"}" ${attributes} ${step.action === "wait" ? "disabled" : ""}>
-        <span class="seq-num outline">${step.index + 1}</span><span class="seq-ico portrait sm">${action ? action[3] : ""}</span>
+      const [big, small] = passive ? ["", ""] : value(step);
+      const attributes = clickable && !passive ? `data-detail="${escape(step.action)}"` : "";
+      return `<button class="seq-res${clickable ? "" : " static"}" ${attributes} ${passive ? "disabled" : ""}>
+        <span class="seq-num outline">${step.index + 1}</span><span class="seq-ico${action && action[3] ? " portrait sm" : " blank"}">${action ? action[3] : ""}</span>
         <span class="seq-name"><b>${escape(name)}</b><i>${escape(when)}${notes ? " · " + escape(notes) : ""}</i></span>
         <span class="seq-dmg"><b class="outline">${big}</b>${small ? `<i>${small}</i>` : ""}</span></button>`;
     }).join("");
@@ -744,6 +758,16 @@
         element.nextElementSibling.textContent = TEXT.chargeLabel(Math.round(charge * 100), format(charge * +element.dataset.time, 1));
         return changed(false);
       }
+      if (element.dataset.seqP !== undefined || element.dataset.seqD !== undefined) {
+        const isPotency = element.dataset.seqP !== undefined;
+        const step = (settings()[element.dataset.list] || [])[+(isPotency ? element.dataset.seqP : element.dataset.seqD)];
+        const value = parseFloat(element.value);
+        if (!step) return;
+        if (isPotency) { if (Number.isFinite(value)) step.p = Math.max(0, Math.min(100, value)); }
+        else if (Number.isFinite(value) && value > 0) step.d = Math.min(600, Math.max(0.1, value));
+        else delete step.d;
+        return changed(false);
+      }
       if (element.dataset.seqN !== undefined || element.dataset.seqW !== undefined) {
         const index = +(element.dataset.seqN !== undefined ? element.dataset.seqN : element.dataset.seqW);
         const value = parseFloat(element.value);
@@ -807,6 +831,7 @@
     });
     root.addEventListener("click", (event) => {
       const find = (selector) => event.target.closest(selector);
+      root.querySelectorAll(".step-picker[open]").forEach((picker) => { if (!picker.contains(event.target)) picker.open = false; });
       let element;
       if ((element = find("[data-toggle-sec]"))) {
         const id = element.dataset.toggleSec;
@@ -895,8 +920,13 @@
         const key = element.dataset.seqAdd;
         const steps = settings()[listKey] || (settings()[listKey] = []);
         const last = steps[steps.length - 1];
-        if (last && last.a === key && key !== "wait") last.n = Math.min(50, (last.n || 1) + 1);
-        else if (steps.length < 30) steps.push(key === "wait" ? { a: "wait", n: 1, w: 1 } : { a: key, n: 1 });
+        const charged = element.dataset.charge !== undefined;
+        const isStatus = key.startsWith("status:");
+        const status = isStatus ? Rules.current().core.statuses[key.slice(7)] : null;
+        if (last && last.a === key && key !== "wait" && !isStatus && !charged && !last.c) last.n = Math.min(50, (last.n || 1) + 1);
+        else if (steps.length < 30) {
+          steps.push(key === "wait" ? { a: "wait", n: 1, w: 1 } : isStatus ? { a: key, n: 1, p: status && status.kind === "debuff" ? 1 : 0.3 } : charged ? { a: key, n: 1, c: 1 } : { a: key, n: 1 });
+        }
         return changed(true);
       }
       if ((element = find("[data-seq-del]"))) { settings()[element.dataset.list].splice(+element.dataset.seqDel, 1); return changed(true); }

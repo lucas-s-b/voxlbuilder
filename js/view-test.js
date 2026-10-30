@@ -2,7 +2,7 @@
   const Engine = window.VoxlEngine;
   const Rules = window.VoxlRules;
   const TEXT = window.VoxlTestText;
-  const SOURCE_COLORS = { m1: "#ffd84a", m2: "#fff6b0", art: "#4af6ff", rune: "#c49aff", drac: "#ff6a3d", special: "#7dff8a", spirit: "#7dff8a", custom: "#ff8ad8", proc: "#ff9a3c", echo: "#ffc27a", dot: "#ff5a5a", aura: "#ff7ab0", minion: "#b0ff7a" };
+  const CHART_COLORS = ["#ffd84a", "#4af6ff", "#ff5a5a", "#7dff8a", "#c49aff", "#ff9a3c", "#ff8ad8", "#fff6b0", "#6aa8ff", "#b0ff7a", "#ffc27a", "#ff7ab0"];
   const MODES = ["dps", "tank", "debuff", "heal", "rules"];
   const MAIN_SOURCES = ["m1", "m2", "art", "rune", "drac", "special", "spirit", "custom"];
   const views = () => window.VoxlViews;
@@ -397,10 +397,12 @@
       ].filter(Boolean).join(" · ");
       const [big, small] = passive ? ["", ""] : value(step);
       const attributes = clickable && !passive ? `data-detail="${escape(step.action)}"` : "";
+      const extras = clickable ? Object.entries(step.extra || {}).filter(([, damage]) => damage > 0.05).sort((first, second) => second[1] - first[1]) : [];
       return `<button class="seq-res${clickable ? "" : " static"}" ${attributes} ${passive ? "disabled" : ""}>
         <span class="seq-num outline">${step.index + 1}</span><span class="seq-ico${action && action[3] ? " portrait sm" : " blank"}">${action ? action[3] : ""}</span>
         <span class="seq-name"><b>${escape(name)}</b><i>${escape(when)}${notes ? " · " + escape(notes) : ""}</i></span>
-        <span class="seq-dmg"><b class="outline">${big}</b>${small ? `<i>${small}</i>` : ""}</span></button>`;
+        <span class="seq-dmg"><b class="outline">${big}</b>${small ? `<i>${small}</i>` : ""}</span>
+        ${extras.length ? `<span class="seq-extra">${extras.map(([source, damage]) => `<span>${escape(source)}</span><b>+${format(damage, 1)}</b>`).join("")}</span>` : ""}</button>`;
     }).join("");
   }
 
@@ -413,12 +415,12 @@
     const backgroundRow = background > 0.5 ? `<div class="seq-res static"><span class="seq-num outline">+</span><span class="seq-ico portrait sm"><span class="seq-badge outline">☠</span></span>
         <span class="seq-name"><b>${TEXT.results.background}</b><i>${TEXT.results.backgroundSub(format(report.duration, 2))}</i></span>
         <span class="seq-dmg"><b class="outline">${format(background, 0)}</b><i>${format((background / total) * 100, 0)}%</i></span></div>` : "";
-    const sources = Object.keys(SOURCE_COLORS).filter((source) => report.bySource[source] > 0.0005);
+    const chartData = chartSeries(report);
     const sequenceTab = `<div class="res-card">
         <div class="res-title outline" title="${TEXT.results.clickStep}">${TEXT.results.yourSequence}</div>
         <div class="seq-results">${stepRows(A, state, report, (step) => [format(step.damage, 0), `${format((step.damage / total) * 100, 0)}%`], true) || `<div class="muted">${TEXT.results.noSteps}</div>`}${backgroundRow}</div>
-        ${report.duration > 0 ? chart(report) : ""}
-        <div class="legend">${sources.map((source) => `<span><i style="background:${SOURCE_COLORS[source]}"></i>${TEXT.results.sources[source] || source} ${format((report.bySource[source] / total) * 100, 0)}%</span>`).join("")}</div>
+        ${report.duration > 0 ? chart(escape, report, chartData) : ""}
+        <div class="legend">${chartData.series.map(({ label, total: value, color }) => `<span><i style="background:${color}"></i>${escape(label)} ${format((value / total) * 100, 0)}%</span>`).join("")}</div>
         ${Object.keys(report.byType).length ? `<div class="sub-h outline">${TEXT.results.byType}</div><div class="bars">${typeBars(escape, report.byType)}</div>` : ""}
       </div>`;
     const body = tab === "sequence" ? sequenceTab : tab === "detail" ? detailTab(A, state) : tab === "uptime" ? uptimeCard(A, report, null) : perksCard(A, state);
@@ -576,21 +578,37 @@
     </div></div>`;
   }
 
-  function chart(report) {
+  function chartSeries(report) {
+    const totals = {};
+    const perBin = report.bins.map((bin) => {
+      const values = {};
+      Object.entries(bin).forEach(([source, names]) => Object.entries(names).forEach(([name, value]) => {
+        const label = source === "m1" ? TEXT.results.sources.m1 : name;
+        values[label] = (values[label] || 0) + value;
+        totals[label] = (totals[label] || 0) + value;
+      }));
+      return values;
+    });
+    const series = Object.entries(totals).filter(([, total]) => total > 0.0005).sort((first, second) => second[1] - first[1])
+      .map(([label, total], index) => ({ label, total, color: CHART_COLORS[index % CHART_COLORS.length] }));
+    return { series, perBin };
+  }
+
+  function chart(escape, report, { series, perBin }) {
     const width = 600, height = 140, pad = 20;
-    const bins = report.bins.slice(0, Math.max(1, Math.ceil(report.duration)));
-    const count = Math.max(1, bins.length);
+    const hasTail = perBin.length > Math.ceil(report.duration);
+    const count = Math.max(1, perBin.length);
     const barWidth = (width - pad) / count;
-    const peak = Math.max(1, ...bins.map((bin) => Object.values(bin).reduce((sum, value) => sum + value, 0)));
+    const peak = Math.max(1, ...perBin.map((bin) => Object.values(bin).reduce((sum, value) => sum + value, 0)));
     const average = report.damage / Math.max(1e-9, report.duration);
     let bars = "";
-    bins.forEach((bin, index) => {
+    perBin.forEach((bin, index) => {
       let top = height - pad;
-      Object.keys(SOURCE_COLORS).forEach((source) => {
-        if (!bin[source]) return;
-        const barHeight = (bin[source] / peak) * (height - pad - 8);
+      series.forEach(({ label, color }) => {
+        if (!bin[label]) return;
+        const barHeight = (bin[label] / peak) * (height - pad - 8);
         top -= barHeight;
-        bars += `<rect x="${pad + index * barWidth + 0.5}" y="${top}" width="${Math.max(1, barWidth - 1)}" height="${barHeight}" fill="${SOURCE_COLORS[source]}"><title>${index}s: ${TEXT.results.sources[source] || source} ${format(bin[source])}</title></rect>`;
+        bars += `<rect x="${pad + index * barWidth + 0.5}" y="${top}" width="${Math.max(1, barWidth - 1)}" height="${barHeight}" fill="${color}"><title>${index}s: ${escape(label)} ${format(bin[label])}</title></rect>`;
       });
     });
     const averageY = height - pad - (average / peak) * (height - pad - 8);
@@ -599,7 +617,7 @@
       ${bars}
       <line x1="${pad}" y1="${averageY}" x2="${width}" y2="${averageY}" stroke="#6dff9a" stroke-dasharray="4 3"/>
       <text x="${pad}" y="${height - 5}" fill="#fff3dc" font-size="13" font-weight="600">0s</text>
-      <text x="${width}" y="${height - 5}" fill="#fff3dc" font-size="13" font-weight="600" text-anchor="end">${format(report.duration, 2)}s</text>
+      <text x="${width}" y="${height - 5}" fill="#fff3dc" font-size="13" font-weight="600" text-anchor="end">${format(hasTail ? perBin.length : report.duration, 2)}s</text>
     </svg>`;
   }
 

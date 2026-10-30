@@ -8,7 +8,7 @@
   function newReport(steps) {
     return {
       damage: 0, bySource: {}, byName: {}, byProc: {}, byType: {}, bins: [], applications: {}, uptime: {}, allyBuffs: {},
-      steps: (steps || []).map((step, index) => ({ index, action: step.a, damage: 0, uses: 0, waited: 0, skipped: 0, start: null, end: null, note: "", applied: {}, healed: 0 })),
+      steps: (steps || []).map((step, index) => ({ index, action: step.a, damage: 0, uses: 0, waited: 0, skipped: 0, start: null, end: null, note: "", applied: {}, extra: {}, healed: 0 })),
       healing: { self: 0, effectiveSelf: 0, allies: 0, bySource: {}, allySources: {} },
       taken: { total: 0, raw: 0, hp: 0, shield: 0, dot: 0, selfDamage: 0, byType: {}, byAttack: {}, incomingHits: 0, dodged: 0, blocked: 0, parried: 0, stun: 0 },
       selfDamage: 0, hits: 0, crits: 0, spirits: 0, killTime: null, deathTime: null, deaths: 0, duration: 0, lowestHp: null,

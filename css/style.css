@@ -1019,3 +1019,6 @@ a { color: #8fd3ff; }
 .seq-param-value { display: flex; justify-content: center; width: 60px; }
 .seq-param-value .num { width: 100%; }
 .seq-param-value input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: #4a8f3a; }
+.seq-extra { grid-column: 3 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding-top: 4px; border-top: 1px solid #ffffff1f; font-size: 12.5px; font-weight: 600; }
+.seq-extra span { color: var(--light-ink-2); overflow-wrap: anywhere; }
+.seq-extra b { color: #ffc27a; text-align: right; }

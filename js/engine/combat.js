@@ -649,8 +649,11 @@
     const bin = Math.max(0, Math.floor(context.time + 1e-9));
     const bins = report.bins;
     while (bins.length <= bin) bins.push({});
-    bins[bin][source] = (bins[bin][source] || 0) + result.total;
-    if (context.stepIndex >= 0 && report.steps[context.stepIndex] && !["dot", "aura", "minion"].includes(source)) report.steps[context.stepIndex].damage += result.total;
+    const sourceBin = bins[bin][source] || (bins[bin][source] = {});
+    sourceBin[name || source] = (sourceBin[name || source] || 0) + result.total;
+    const step = context.stepIndex >= 0 ? report.steps[context.stepIndex] : null;
+    if (step && !["dot", "aura", "minion"].includes(source)) step.damage += result.total;
+    if (step && ["proc", "echo"].includes(source)) step.extra[name || source] = (step.extra[name || source] || 0) + result.total;
     if (context.target.pool) {
       context.target.hp -= result.total;
       if (context.target.hp <= 0 && !context.target.dead) {

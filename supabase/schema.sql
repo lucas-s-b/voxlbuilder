@@ -53,8 +53,10 @@ grant select (id, created_at, title, author, description, tags, code, race, guil
 create or replace function public.voxl_client_hash() returns text
 language sql stable as $$
   select encode(extensions.digest(coalesce(
-    split_part(coalesce(current_setting('request.headers', true)::json ->> 'x-forwarded-for', ''), ',', 1),
-    'unknown') || ':voxlbuilder', 'sha256'), 'hex');
+    nullif(headers ->> 'cf-connecting-ip', ''),
+    nullif(btrim(split_part(headers ->> 'x-forwarded-for', ',', -1)), ''),
+    'unknown') || ':voxlbuilder', 'sha256'), 'hex')
+  from (select current_setting('request.headers', true)::json as headers) as request;
 $$;
 
 -- ------------------------------------------------------------------ publish

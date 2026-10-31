@@ -7,6 +7,8 @@
   const statusAlive = (status, time) => status && status.until > time + 1e-9;
   const EMPTY = [];
   const SIDES = ["self", "target"];
+  const EXTRA_SOURCES = new Set(["proc", "echo"]);
+  const BACKGROUND_SOURCES = new Set(["dot", "aura", "minion"]);
 
   function sideStatus(side, idOrTag) {
     const context = active.context;
@@ -80,6 +82,7 @@
   const condition = (formula, variables) => (formula === undefined ? true : Expression.truthy(evaluate(formula, variables, false)));
 
   function effectScope(entry, parentVariables, context) {
+    if (entry.ownScope === false) return parentVariables;
     const variables = Object.create(parentVariables);
     if (entry.sourceKind === "perk") variables.amount = entry.amount;
     else if (entry.sourceKind === "status") {
@@ -126,7 +129,7 @@
         const entries = definition[sideKey][type];
         if (!entries || !statusAlive(statuses[id], context.time)) continue;
         if (!added) added = [];
-        for (const entry of entries) added.push({ effect: entry.effect, sourceKind: entry.sourceKind, sourceId: entry.sourceId, key: entry.key, amount: entry.amount, side });
+        for (const entry of entries) added.push({ effect: entry.effect, sourceKind: entry.sourceKind, sourceId: entry.sourceId, key: entry.key, amount: entry.amount, ownScope: entry.ownScope, side });
       }
     }
     if (!added) return own;
@@ -644,7 +647,7 @@
     report.damage += result.total;
     report.bySource[source] = (report.bySource[source] || 0) + result.total;
     report.byName[name] = (report.byName[name] || 0) + result.total;
-    if (["proc", "echo", "dot", "aura", "minion"].includes(source)) report.byProc[name] = (report.byProc[name] || 0) + result.total;
+    if (EXTRA_SOURCES.has(source) || BACKGROUND_SOURCES.has(source)) report.byProc[name] = (report.byProc[name] || 0) + result.total;
     Object.entries(result.byType).forEach(([type, value]) => { report.byType[type] = (report.byType[type] || 0) + value; });
     const bin = Math.max(0, Math.floor(context.time + 1e-9));
     const bins = report.bins;
@@ -652,8 +655,8 @@
     const sourceBin = bins[bin][source] || (bins[bin][source] = {});
     sourceBin[name || source] = (sourceBin[name || source] || 0) + result.total;
     const step = context.stepIndex >= 0 ? report.steps[context.stepIndex] : null;
-    if (step && !["dot", "aura", "minion"].includes(source)) step.damage += result.total;
-    if (step && ["proc", "echo"].includes(source)) step.extra[name || source] = (step.extra[name || source] || 0) + result.total;
+    if (step && !BACKGROUND_SOURCES.has(source)) step.damage += result.total;
+    if (step && EXTRA_SOURCES.has(source)) step.extra[name || source] = (step.extra[name || source] || 0) + result.total;
     if (context.target.pool) {
       context.target.hp -= result.total;
       if (context.target.hp <= 0 && !context.target.dead) {
@@ -676,7 +679,7 @@
     const groups = expandGroups(context, attack, scope);
     let countMultiplier = 1;
     let damageMultiplier = 1;
-    if (attack.isM1 || attack.isM2) {
+    if ((attack.isM1 || attack.isM2) && (liveEffects(context, "hitMultiplier").length || liveEffects(context, "procCoefficient").length)) {
       const probe = hitVariables(context, attack, {}, { procCoef: attack.procCoef });
       passing(context, "hitMultiplier", probe).forEach((entry) => {
         countMultiplier *= number(entry.effect.count, entry.scope, 1);
@@ -709,11 +712,15 @@
     };
     const finish = () => {
       if (options && options.noAttackTrigger) return;
-      const attackVariables = hitVariables(context, attack, {}, { procCoef: attack.procCoef });
-      attackVariables.hitsLanded = attack.hitsLanded;
-      attackVariables.attackPreBonus = attack.parentPreBonus || 0;
-      if (!attack.isProc && !attack.isEcho && attack.kind !== "dot") fireTrigger(context, "attack", attackVariables);
-      if (attack.finisher && !attack.eachHitFinisher && attack.hitsLanded) fireTrigger(context, "finisher", attackVariables);
+      const firesAttack = !attack.isProc && !attack.isEcho && attack.kind !== "dot" && hasTrigger(context, "attack");
+      const firesFinisher = attack.finisher && !attack.eachHitFinisher && attack.hitsLanded && hasTrigger(context, "finisher");
+      if (firesAttack || firesFinisher) {
+        const attackVariables = hitVariables(context, attack, {}, { procCoef: attack.procCoef });
+        attackVariables.hitsLanded = attack.hitsLanded;
+        attackVariables.attackPreBonus = attack.parentPreBonus || 0;
+        if (firesAttack) fireTrigger(context, "attack", attackVariables);
+        if (firesFinisher) fireTrigger(context, "finisher", attackVariables);
+      }
       if (options && options.onFinish) options.onFinish(attack);
     };
     if (spread > 0 && totalHits > 1) {
@@ -743,7 +750,7 @@
       const amount = number(entry.effect.fraction, entry.scope) * damage + number(entry.effect.flat, entry.scope, 0);
       if (amount > 0) heal(context, amount, "self", effectLabel(context, entry), { lifesteal: true, noScaling: true, noLevel: true, canProcHeal: false });
     });
-    if (result.hit.procCoef > 0 || attack.kind === "dot") runEchoes(context, attack, result, index);
+    if (result.hit.procCoef > 0 && attack.kind !== "dot") runEchoes(context, attack, result, index);
     if (result.hit.procCoef > 0 && attack.kind !== "dot") {
       context.hitTimes.push(context.time);
       if (context.hitTimes.length > 200) context.hitTimes.splice(0, 100);
@@ -761,7 +768,6 @@
     if (attack.isEcho || context.depth > context.profile.constants.procChainDepth) return;
     passing(context, "echo", result.variables).forEach((entry) => {
       const effect = entry.effect;
-      if (attack.kind === "dot") return;
       if (effect.oncePerAttack && index > 1) return;
       if (effect.cooldown && !procReady(context, entry.key, number(effect.cooldown, entry.scope))) return;
       if (effect.chance !== undefined) {
@@ -832,24 +838,21 @@
 
   const HIT_TRIGGERS = ["hit", "crit", "finisherHit"];
 
+  const hasTrigger = (context, trigger) => context.profile.triggers.names.has(trigger);
+
   function fireTrigger(context, trigger, variables) {
-    if (context.depth > context.profile.constants.procChainDepth + 2) return;
+    if (context.depth > context.profile.constants.procChainDepth + 2 || !hasTrigger(context, trigger)) return;
+    const triggers = context.profile.triggers;
+    const statusEntries = [];
+    SIDES.forEach((side) => {
+      const statuses = context[side].statuses;
+      for (const id in statuses) {
+        const list = triggers.statuses[id] && triggers.statuses[id][side].get(trigger);
+        if (list && statusAlive(statuses[id], context.time)) statusEntries.push(...list);
+      }
+    });
+    const triggered = (triggers.perks.get(trigger) || EMPTY).concat(statusEntries, triggers.counters.get(trigger) || EMPTY);
     context.depth++;
-    const triggered = [];
-    Object.entries(context.profile.effects).forEach(([type, list]) => list.forEach((entry) => { if (entry.effect.trigger === trigger) triggered.push(entry); }));
-    const index = context.profile.statusEffects;
-    ["self", "target"].forEach((side) => {
-      const sideKey = side === "self" ? "onSelf" : "onTarget";
-      Object.entries(context[side].statuses).forEach(([id, status]) => {
-        if (!statusAlive(status, context.time) || !index[id]) return;
-        Object.values(index[id][sideKey]).forEach((list) => list.forEach((entry) => { if (entry.effect.trigger === trigger) triggered.push({ ...entry, side }); }));
-      });
-    });
-    (context.profile.effects.counter || []).forEach((entry) => {
-      const gain = entry.effect.gain;
-      if (gain && gain.trigger === trigger) triggered.push({ ...entry, counterGain: true });
-    });
-    (context.profile.effects.counterGain || []).forEach((entry) => { if (entry.effect.trigger === trigger) triggered.push({ ...entry, counterGain: true, extraGain: true }); });
     triggered.forEach((entry) => runTriggered(context, entry, trigger, variables));
     context.depth--;
   }
@@ -860,7 +863,7 @@
     if (entry.counterGain) {
       const gain = entry.extraGain ? effect : effect.gain;
       if (!condition(gain.when, scope)) return;
-      gainCounter(context, entry.extraGain ? effect.id : effect.id, number(gain.amount, scope, 1));
+      gainCounter(context, effect.id, number(gain.amount, scope, 1));
       return;
     }
     if (!condition(effect.when, scope)) return;
@@ -1049,7 +1052,7 @@
   }
 
   function abilityCooldown(context, ability, baseCooldown, attack) {
-    const variables = attack ? hitVariables(context, attack, {}, { procCoef: attack.procCoef }) : context.variables;
+    const variables = attack && liveEffects(context, "cooldown").length ? hitVariables(context, attack, {}, { procCoef: attack.procCoef }) : context.variables;
     let base = baseCooldown;
     const effects = passing(context, "cooldown", variables).filter((entry) => entry.effect.ability === ability || entry.effect.ability === "any");
     effects.filter((entry) => entry.effect.kind === "base").forEach((entry) => { base = number(entry.effect.value, entry.scope, base); });
@@ -1080,12 +1083,14 @@
     const stats = context.profile.stats;
     const statValue = stats["Attack Speed"] || 0;
     const statMultiplier = statValue >= 0 ? 1 + statValue / 100 : 1 / (1 + Math.abs(statValue) / 100);
-    const variables = attack ? hitVariables(context, attack, {}, { procCoef: attack.procCoef }) : context.variables;
+    const hasEffects = liveEffects(context, "fixedAttackSpeed").length || liveEffects(context, "attackSpeed").length;
+    const variables = attack && hasEffects ? hitVariables(context, attack, {}, { procCoef: attack.procCoef }) : context.variables;
     const fixed = passing(context, "fixedAttackSpeed", variables)[0];
     if (fixed) return { multiplier: number(fixed.effect.value, fixed.scope, 0.75), weapon: 1, stat: 1, perk: 1, time: 1 };
-    const sum = (category) => passing(context, "attackSpeed", variables).filter((entry) => (entry.effect.category || "perk") === category)
+    const speedEffects = passing(context, "attackSpeed", variables);
+    const sum = (category) => speedEffects.filter((entry) => (entry.effect.category || "perk") === category)
       .reduce((total, entry) => total + number(entry.effect.value, entry.scope), 0);
-    const timeMultiplier = passing(context, "attackSpeed", variables).filter((entry) => entry.effect.category === "time")
+    const timeMultiplier = speedEffects.filter((entry) => entry.effect.category === "time")
       .reduce((product, entry) => product * number(entry.effect.value, entry.scope, 1), 1);
     const weapon = (context.profile.weapon.attackSpeed || 1) + sum("weapon") / 100;
     const perk = kind === "art" ? 1 + sum("art") / 100 : 1 + sum("perk") / 100;
@@ -1094,8 +1099,15 @@
   }
 
   function schedule(context, time, run) {
-    context.queue.push({ time, run, order: context.queueCounter++ });
-    context.queue.sort((a, b) => a.time - b.time || a.order - b.order);
+    const queue = context.queue;
+    let low = 0;
+    let high = queue.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (queue[middle].time <= time) low = middle + 1;
+      else high = middle;
+    }
+    queue.splice(low, 0, { time, run, order: context.queueCounter++ });
   }
 
   function advanceTo(context, time) {
@@ -1278,8 +1290,10 @@
     }
     const alive = context.minions.filter((minion) => minion.until > context.time);
     while (alive.length > modifiers.cap) {
-      alive.shift().until = context.time;
-      fireTrigger(context, "minionDeath", variables);
+      const replaced = alive.shift();
+      replaced.until = context.time;
+      replaced.dead = true;
+      fireTrigger(context, "minionDeath", Object.assign(Object.create(context.variables), { minionBaseHp: replaced.maxHp }));
     }
     fireTrigger(context, "summon", variables);
     autoSpirit(context, "summon");
@@ -1479,7 +1493,7 @@
       typesFromSpec, scalingsFromSpec, boostMultiplier, armorMultiplier, naturalCrit, resolveHit, rollCrit, executeAttack, record, fireTrigger,
       heal, healDirect, cleanse, takeSelfDamage, loseHp, abilityCooldown, reduceCooldown, attackSpeed, schedule, advanceTo, trackUptime,
       summonMinions, minionModifiers, attackName, enemyAttack, incomingHit, spiritRule, gainEnergy, spiritAttack, releaseSpirit, autoSpirit, procAttack,
-      currentShieldMax, sideStatus, hitVariables, weaponTypesFor,
+      currentShieldMax, sideStatus, hitVariables, weaponTypesFor, hasTrigger,
     },
   });
 })();

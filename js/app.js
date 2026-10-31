@@ -414,7 +414,7 @@
 
   function renderDracGrid(q) {
     const dr = M.draconic(build());
-    const list = M.DRACONIC.abilities.filter((x) => window.VoxlSearch.matches(q, { text: window.VoxlSearch.entryText([x.name, x.text], [], perkInfo), stats: {} }));
+    const list = M.DRACONIC.abilities.filter((x) => window.VoxlSearch.matches(q, { text: window.VoxlSearch.entryText(x, [x.name, x.text], perkInfo), stats: {} }));
     $("itemGrid").innerHTML = list.length ? list.map((x) => {
       const id = dracId(x), locked = x.rank > dr.rank;
       return `<button class="tile${ui.selected === id ? " selected" : ""}${locked ? " locked" : ""}" data-item="${id}" role="option" aria-selected="${ui.selected === id}"${locked ? ` title="Unlocked at Draconic rank ${x.rank}"` : ""}>
@@ -438,7 +438,7 @@
     let list = slotItems().filter((i) => {
       if (ui.favOnly && !fav.has(i.id)) return false;
       if (!q.length) return true;
-      return window.VoxlSearch.matches(q, { text: window.VoxlSearch.entryText([i.name, i.set, i.desc, i.details || []], i.perks, perkInfo), stats: i.stats });
+      return window.VoxlSearch.matches(q, { text: window.VoxlSearch.entryText(i, [i.name, i.set, i.desc, i.details || []], perkInfo), stats: i.stats });
     });
     if (sortStat) {
       list.sort((a, b) => (b.stats[sortStat] || 0) - (a.stats[sortStat] || 0) || a.name.localeCompare(b.name));
@@ -524,11 +524,9 @@
       return;
     }
     if (ui.view !== "inv") {
-      box.innerHTML = ui.view === "shop"
-        ? `<div class="d-hint">Browse builds other players published. Search, filter by tags, race, guild or weapon, like the ones you enjoy and press LOAD to put one into your current loadout (you can undo). Use + PUBLISH to share yours.</div>`
-        : ui.view === "char"
+      box.innerHTML = ui.view === "char"
         ? `<div class="d-hint">Pick a race, a guild and rank, and build your weapon from two parts. Hover anything to preview it; click to pin its details here. Weapon, guild and race stats are added to your totals.</div>`
-        : `<div class="d-hint">Choose an attack, toggle buffs, DoTs and the target's defenses. Damage follows the wiki's damage formula. The rotation runs one action at a time with cast times, and the Survival card covers defense, healing and minion perks.</div>`;
+        : "";
       return;
     }
     const t = target();
@@ -944,8 +942,8 @@
     const w = location.hash.match(/^#w=([A-Za-z0-9_-]+)/);
     if (m) {
       const shared = await decodeShare(m[1], m[2]);
-      if (shared) loadIntoLoadout(shared);
-      else toast("That build link is broken");
+      if (!shared) toast("That build link is broken");
+      else if (JSON.stringify(shared) !== JSON.stringify(build())) loadIntoLoadout(shared);
     } else if (w && window.VoxlWorkshop) {
       await window.VoxlWorkshop.openLink(api, w[1]);
       return; // keeps the #w= link in the address bar

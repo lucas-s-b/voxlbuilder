@@ -15,21 +15,26 @@
   function partKinds(mode) { return mode === "monk" ? ["gloves", "essence"] : ["handle", "blade"]; }
 
   // Damage, cooldown and timing of a weapon art with the current build and Test settings (vs the Test target).
+  const artCache = new Map();
+  window.VoxlRules.onChange(() => artCache.clear());
+
   function artNumbers(A) {
     const build = A.build();
+    const signature = JSON.stringify(build);
     const totals = A.totalsOf(build);
     const weapon = A.M.weapon(build);
-    const cache = {};
     return (art) => {
-      if (cache[art.id]) return cache[art.id];
+      const key = signature + "|" + art.id;
+      if (artCache.has(key)) return artCache.get(key);
       const profile = A.Engine.buildProfile(build, totals, { ...weapon, art }, build.test);
       const preview = A.Engine.abilityPreview(profile, "art", 30);
-      cache[art.id] = {
+      artCache.set(key, {
         atk: { cooldown: preview ? preview.cooldown : art.cooldown },
         h: preview && preview.damage > 0 ? { expected: preview.damage, hits: preview.hitCount, expByType: preview.byType } : null,
         tm: { cast: preview ? preview.cast : 1, active: preview ? preview.active : 1 }, wpn: weapon,
-      };
-      return cache[art.id];
+      });
+      if (artCache.size > 200) artCache.delete(artCache.keys().next().value);
+      return artCache.get(key);
     };
   }
 
@@ -203,7 +208,7 @@
     const q = window.VoxlSearch.parse(ui.partSearch, A.SEARCH_STATS);
     const filterStat = window.VoxlSearch.filterStat(q);
     let list = D.parts.filter((p) => p.kind === ui.partKind
-      && window.VoxlSearch.matches(q, { text: window.VoxlSearch.entryText([p.name, p.partType, Object.keys(p.types || {})], p.perks, A.perkInfo), stats: p.stats || {} }));
+      && window.VoxlSearch.matches(q, { text: window.VoxlSearch.entryText(p, [p.name, p.partType, Object.keys(p.types || {})], A.perkInfo), stats: p.stats || {} }));
     if (ui.partSort === "tier") list.sort((a, b) => b.tier - a.tier || a.name.localeCompare(b.name));
     else if (ui.partSort === "speed") list.sort((a, b) => b.attackSpeed - a.attackSpeed || a.name.localeCompare(b.name));
     else if (filterStat) list.sort((a, b) => (b.stats[filterStat] || 0) - (a.stats[filterStat] || 0) || a.name.localeCompare(b.name));

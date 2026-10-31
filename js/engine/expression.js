@@ -81,22 +81,21 @@
         expect(")");
         return inner;
       }
-      if (token.value === "-" || token.value === "!") return { node: "unary", operator: token.value, operand: unary() };
       throw new Error(`Unexpected "${token.value}"`);
+    };
+    const power = () => {
+      const base = primary();
+      if (isOperator("^")) { position++; return { node: "binary", operator: "^", left: base, right: unary() }; }
+      return base;
     };
     const unary = () => {
       if (isOperator("-") || isOperator("!")) {
         const operator = tokens[position++].value;
         return { node: "unary", operator, operand: unary() };
       }
-      return primary();
+      return power();
     };
-    const power = () => {
-      const base = unary();
-      if (isOperator("^")) { position++; return { node: "binary", operator: "^", left: base, right: power() }; }
-      return base;
-    };
-    const multiplicative = binary(power, ["*", "/", "%"]);
+    const multiplicative = binary(unary, ["*", "/", "%"]);
     const additive = binary(multiplicative, ["+", "-"]);
     const comparison = binary(additive, ["<", "<=", ">", ">="]);
     const equality = binary(comparison, ["==", "!="]);
@@ -117,11 +116,12 @@
   }
 
   const truthy = (value) => (typeof value === "string" ? value.length > 0 : !!value);
+  const comparable = (value) => (typeof value === "boolean" ? +value : value);
   const BINARY = {
     "+": (a, b) => a + b, "-": (a, b) => a - b, "*": (a, b) => a * b,
     "/": (a, b) => (b === 0 ? 0 : a / b), "%": (a, b) => (b === 0 ? 0 : a % b), "^": (a, b) => Math.pow(a, b),
     "<": (a, b) => a < b, "<=": (a, b) => a <= b, ">": (a, b) => a > b, ">=": (a, b) => a >= b,
-    "==": (a, b) => a === b, "!=": (a, b) => a !== b,
+    "==": (a, b) => comparable(a) === comparable(b), "!=": (a, b) => comparable(a) !== comparable(b),
   };
 
   function build(tree) {
@@ -177,9 +177,18 @@
     return cache.get(key);
   }
 
+  const nameCache = new Map();
+
   function names(formula) {
+    if (typeof formula !== "string") return { variables: new Set(), functions: new Set() };
+    if (!nameCache.has(formula)) nameCache.set(formula, collectNames(formula));
+    const found = nameCache.get(formula);
+    if (found instanceof Error) throw found;
+    return found;
+  }
+
+  function collectNames(formula) {
     const found = { variables: new Set(), functions: new Set() };
-    if (typeof formula !== "string") return found;
     const walk = (tree) => {
       if (tree.node === "variable") found.variables.add(tree.name);
       if (tree.node === "call") { found.functions.add(tree.name); tree.args.forEach(walk); }
@@ -187,7 +196,7 @@
       if (tree.node === "binary") { walk(tree.left); walk(tree.right); }
       if (tree.node === "conditional") { walk(tree.condition); walk(tree.whenTrue); walk(tree.whenFalse); }
     };
-    walk(parse(formula));
+    try { walk(parse(formula)); } catch (error) { return error; }
     return found;
   }
 

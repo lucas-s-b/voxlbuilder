@@ -80,6 +80,14 @@
     return { all: amounts, enabled };
   }
 
+  function readsVariable(value, name) {
+    if (typeof value === "string") {
+      try { return Expression.names(value).variables.has(name); } catch (error) { return false; }
+    }
+    if (Array.isArray(value)) return value.some((item) => readsVariable(item, name));
+    return !!value && typeof value === "object" && Object.values(value).some((item) => readsVariable(item, name));
+  }
+
   function indexEffects(perkAmounts) {
     const rules = window.VoxlRules.current();
     const byType = {};
@@ -88,7 +96,7 @@
       if (!rule) return;
       rule.effects.forEach((effect, index) => {
         if (effect.type === "stat" || effect.type === "grantPerk") return;
-        (byType[effect.type] = byType[effect.type] || []).push({ sourceKind: "perk", sourceId: id, amount, effect, key: `${id}#${index}` });
+        (byType[effect.type] = byType[effect.type] || []).push({ sourceKind: "perk", sourceId: id, amount, effect, key: `${id}#${index}`, ownScope: readsVariable(effect, "amount") });
       });
     });
     Object.values(byType).forEach((list) => list.sort((a, b) => (a.effect.order || 0) - (b.effect.order || 0)));
@@ -101,10 +109,28 @@
     Object.entries(statuses).forEach(([id, status]) => {
       index[id] = { onSelf: {}, onTarget: {} };
       ["onSelf", "onTarget"].forEach((side) => (status[side] || []).forEach((effect, position) => {
-        (index[id][side][effect.type] = index[id][side][effect.type] || []).push({ sourceKind: "status", sourceId: id, effect, key: `${id}.${side}#${position}` });
+        (index[id][side][effect.type] = index[id][side][effect.type] || []).push({ sourceKind: "status", sourceId: id, effect, key: `${id}.${side}#${position}`, ownScope: readsVariable(effect, "potency") });
       }));
     });
     return index;
+  }
+
+  function indexTriggers(effects, statusEffects) {
+    const add = (map, trigger, entry) => { if (!map.has(trigger)) map.set(trigger, []); map.get(trigger).push(entry); };
+    const perks = new Map();
+    Object.entries(effects).filter(([type]) => type !== "counterGain").forEach(([, list]) => list.forEach((entry) => { if (entry.effect.trigger) add(perks, entry.effect.trigger, entry); }));
+    const counters = new Map();
+    (effects.counter || []).forEach((entry) => { if (entry.effect.gain && entry.effect.gain.trigger) add(counters, entry.effect.gain.trigger, { ...entry, counterGain: true }); });
+    (effects.counterGain || []).forEach((entry) => { if (entry.effect.trigger) add(counters, entry.effect.trigger, { ...entry, counterGain: true, extraGain: true }); });
+    const statuses = {};
+    Object.entries(statusEffects).forEach(([id, sides]) => {
+      statuses[id] = { self: new Map(), target: new Map() };
+      [["self", "onSelf"], ["target", "onTarget"]].forEach(([side, sideKey]) => Object.values(sides[sideKey]).forEach((list) => list.forEach((entry) => {
+        if (entry.effect.trigger) add(statuses[id][side], entry.effect.trigger, { ...entry, side });
+      })));
+    });
+    const names = new Set([...perks.keys(), ...counters.keys(), ...Object.values(statuses).flatMap((sides) => [...sides.self.keys(), ...sides.target.keys()])]);
+    return { perks, counters, statuses, names };
   }
 
   function formInfo(build, perkAmounts) {
@@ -146,9 +172,11 @@
       enemyBaseHp: 100,
     };
     const runeItem = build.slots.rune && window.VOXL_DATA.items.find((item) => item.id === build.slots.rune.id);
+    const effects = indexEffects(perks.enabled);
+    const statusEffects = indexStatusEffects();
     return {
       build, settings, rules, constants, level, stats, statVariables: statVars, perks: perks.enabled, allPerks: perks.all, conditions,
-      variables, functions: MATH_FUNCTIONS, effects: indexEffects(perks.enabled), statusEffects: indexStatusEffects(),
+      variables, functions: MATH_FUNCTIONS, effects, statusEffects, triggers: indexTriggers(effects, statusEffects),
       form, weapon, weaponTypes: types, weaponScalings: { ...(weapon.scalings || {}) }, draconic, runeItem,
     };
   }
@@ -156,6 +184,6 @@
   window.VoxlEngine = window.VoxlEngine || {};
   Object.assign(window.VoxlEngine, {
     camel, STAT_NAMES, OFFENSIVE_BOOSTS, MATH_FUNCTIONS, statVariables, applyStatEffects, isUnscaled, conditionValues,
-    activePerks, indexEffects, buildProfile, weaponTypes, highestType,
+    activePerks, indexEffects, indexTriggers, buildProfile, weaponTypes, highestType,
   });
 })();

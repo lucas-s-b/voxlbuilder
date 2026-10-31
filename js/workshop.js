@@ -65,6 +65,7 @@
   const st = { sort: "top", q: "", tags: [], race: "", guild: "", weapon: "", page: 0, mine: false, publish: false,
     items: [], more: false, loading: false, error: "", form: { title: "", description: "", tags: [], custom: "" } };
   let A = null, timer = null;
+  const liking = new Set();
 
   const ago = (iso) => {
     const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -74,16 +75,20 @@
     return new Date(iso).toLocaleDateString();
   };
 
+  let latestRequest = 0;
   async function refresh(append) {
     if (!connected()) return render();
+    const request = ++latestRequest;
     st.loading = true; st.error = "";
     if (!append) { st.page = 0; st.items = []; }
     render();
     try {
       const rows = await call(listQuery(st));
+      if (request !== latestRequest) return;
       st.items = append ? st.items.concat(rows) : rows;
       st.more = rows.length === PAGE;
     } catch (e) {
+      if (request !== latestRequest) return;
       st.error = e.message;
     }
     st.loading = false;
@@ -265,6 +270,8 @@
       if ((el = t("[data-ws-link]"))) return A.copy(location.href.split("#")[0] + "#w=" + el.dataset.wsLink, "Workshop link copied!");
       if ((el = t("[data-ws-like]"))) {
         const id = el.dataset.wsLike, liked = read(LIKED_KEY, {});
+        if (liking.has(id)) return;
+        liking.add(id);
         try {
           const n = await rpc("like_build", { p_id: id, p_like: !liked[id] });
           if (liked[id]) delete liked[id]; else liked[id] = 1;
@@ -273,6 +280,7 @@
           if (row) row.likes = n;
           render();
         } catch (err) { A.toast(err.message); }
+        liking.delete(id);
         return;
       }
       if ((el = t("[data-ws-delete]"))) {

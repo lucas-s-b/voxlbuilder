@@ -37,13 +37,18 @@
 
   const filterStat = (terms) => (terms.find((term) => term.stats && term.stats.length && !term.negate) || { stats: [] }).stats[0] || "";
 
-  function entryText(fields, perks, perkInfo) {
+  const textCache = new WeakMap();
+
+  function entryText(entity, fields, perkInfo) {
+    if (textCache.has(entity)) return textCache.get(entity);
     const perkData = window.VOXL_DATA.perks;
-    const perkText = (perks || []).flatMap((perk) => {
+    const perkText = (entity.perks || []).flatMap((perk) => {
       const info = perkInfo(perk.id);
       return [info.name, info.desc, ...((perkData[perk.id] && perkData[perk.id].tags) || [])];
     });
-    return fields.flat().concat(perkText).filter(Boolean).join("\n").toLowerCase();
+    const text = fields.flat().concat(perkText).filter(Boolean).join("\n").toLowerCase();
+    textCache.set(entity, text);
+    return text;
   }
 
   window.VoxlSearch = { parse, matches, filterStat, entryText };

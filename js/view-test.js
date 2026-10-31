@@ -599,8 +599,8 @@
     const hasTail = perBin.length > Math.ceil(report.duration);
     const count = Math.max(1, perBin.length);
     const barWidth = (width - pad) / count;
-    const peak = Math.max(1, ...perBin.map((bin) => Object.values(bin).reduce((sum, value) => sum + value, 0)));
     const average = report.damage / Math.max(1e-9, report.duration);
+    const peak = Math.max(1, average, ...perBin.map((bin) => Object.values(bin).reduce((sum, value) => sum + value, 0)));
     let bars = "";
     perBin.forEach((bin, index) => {
       let top = height - pad;

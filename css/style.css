@@ -837,6 +837,7 @@ a { color: #8fd3ff; }
 #viewWorkshop .cv-sec { background: var(--plate) !important; border: 2px solid #5a3d1e !important; box-shadow: inset 0 0 0 2px #fff8e8; padding: 8px 10px 10px; }
 .ws-filters { flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
 .ws-filters .search { flex: 1 1 220px; min-width: 0; }
+@media (max-width: 420px) { .ws-filters .search { flex-basis: 100%; } }
 .ws-tags .mode-tab, .ws-pub .mode-tab { font-size: 12.5px; }
 .ws-pub .form-grid input, .ws-desc textarea { width: 100%; }
 .ws-desc { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; font-size: 13.5px; font-weight: 700; color: var(--plate-ink); }

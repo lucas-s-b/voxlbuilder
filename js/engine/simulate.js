@@ -194,7 +194,7 @@
   function prepareAttack(context, template, extra) {
     const attack = { ...template, ...extra };
     attack.procCoef = combat.number(attack.procCoef === undefined ? 1 : attack.procCoef, context.variables, 1);
-    if (attack.isM1 || attack.isM2) {
+    if ((attack.isM1 || attack.isM2) && combat.liveEffects(context, "countsAs").length) {
       const variables = combat.hitVariables(context, attack, {}, { procCoef: attack.procCoef });
       if (combat.passing(context, "countsAs", variables).some((entry) => entry.effect.kind === "art")) attack.countsAsArt = true;
     }
@@ -204,6 +204,10 @@
   function castVariables(context, attack, castTime, cooldown) {
     const variables = combat.hitVariables(context, attack, {}, { procCoef: attack.procCoef });
     return Object.assign(variables, { castTime, cooldown, baseCooldown: attack.baseCooldown || 0, isCastStart: true });
+  }
+
+  function fireCast(context, attack, castTime) {
+    if (combat.hasTrigger(context, "cast")) combat.fireTrigger(context, "cast", castVariables(context, attack, castTime, 0));
   }
 
   function runAttack(context, attack, rule, castTime, activeTime, cooldown) {
@@ -225,8 +229,10 @@
       const amount = selfDamage.ofMaxHp ? combat.number(selfDamage.fraction, variables) * context.self.maxHp : combat.number(selfDamage.base, variables) * combat.number(selfDamage.count === undefined ? 1 : selfDamage.count, variables, 1);
       combat.takeSelfDamage(context, amount, selfDamage.types, attack.name);
     }
-    const endVariables = castVariables(context, attack, castTime, cooldown);
-    combat.schedule(context, context.time + castTime, () => combat.fireTrigger(context, "castEnd", endVariables));
+    if (combat.hasTrigger(context, "castEnd")) {
+      const endVariables = castVariables(context, attack, castTime, cooldown);
+      combat.schedule(context, context.time + castTime, () => combat.fireTrigger(context, "castEnd", endVariables));
+    }
     context.currentAttack = null;
     return result;
   }
@@ -284,7 +290,7 @@
   function performSwing(context, template) {
     const attack = prepareAttack(context, template, { amount: template.amount });
     const lock = swingTime(context, attack, context.profile.settings);
-    combat.fireTrigger(context, "cast", castVariables(context, attack, lock, 0));
+    fireCast(context, attack, lock);
     combat.executeAttack(context, attack);
     combat.gainEnergy(context, attack);
     return lock;
@@ -296,7 +302,7 @@
     const attack = prepareAttack(context, template, {});
     const speed = combat.attackSpeed(context, attack, "weapon").multiplier;
     const lock = swingTime(context, attack, context.profile.settings) + chargeTime / speed;
-    combat.fireTrigger(context, "cast", castVariables(context, attack, lock, 0));
+    fireCast(context, attack, lock);
     combat.executeAttack(context, attack);
     combat.gainEnergy(context, attack);
     if (entry && entry.effect.resetCounter) combat.resetCounter(context, entry.effect.resetCounter);
@@ -575,13 +581,19 @@
     return Math.sqrt(variance / values.length) / Math.abs(mean) < TARGET_ERROR;
   }
 
+  const SHOWN_METRICS = {
+    tank: [(report) => report.taken.total, (report) => report.healing.self],
+    heal: [(report) => report.healing.self + report.healing.allies],
+  };
+  const DAMAGE_METRICS = [(report) => report.damage];
+
   function simulate(profile, options) {
     const runs = Math.max(1, Math.round(options.runs || DEFAULT_RUNS));
+    const metrics = SHOWN_METRICS[options.mode] || DAMAGE_METRICS;
     const reports = [];
     for (let run = 0; run < runs; run++) {
       reports.push(runFight(profile, options, 7919 * (run + 1)));
-      if (reports.length >= MINIMUM_RUNS && reports.length % 8 === 0
-        && settled(reports, (report) => report.damage) && settled(reports, (report) => report.healing.self + report.healing.allies) && settled(reports, (report) => report.taken.total)) break;
+      if (reports.length >= MINIMUM_RUNS && reports.length % 8 === 0 && metrics.every((metric) => settled(reports, metric))) break;
     }
     return average(reports);
   }

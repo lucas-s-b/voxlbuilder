@@ -9,12 +9,12 @@ window.VOXL_RULES.perks = {
   "air-pressure": { effects: [
     { type: "statusGain", trigger: "hit", status: "airPressure", amount: "(0.1 + 0.01 * amount) * hitPreBonus * typeShare('Air')", max: "10 * amount", duration: 15, when: "hasType('Air')" },
     { type: "proc", trigger: "cast", when: "isRune && hasSelf('airPressure')", consumeSelf: "airPressure",
-      attack: { name: "Air Burst", hits: [["6 + 0.65 * selfPotency('airPressure')", 1]], types: { Air: 1 }, scalings: { Air: 1 }, kind: "rune", canProc: true } },
+      attack: { name: "Air Burst", hits: [["0.65 * selfPotency('airPressure')", 1]], types: { Air: 1 }, scalings: { Air: 1 }, kind: "rune", canProc: true } },
   ] },
   "apollo-boost": { effects: [{ type: "proc", trigger: "castEnd", when: "isRune",
     attack: { hits: [["5 / (1 + 0.1 * amount)", "floor(1 + 2 * amount)"]], types: { Magic: 0.5, Physical: 0.5 }, scalings: { Magic: 1, Physical: 1 }, kind: "rune", canProc: true },
     applies: [{ status: "taunt", duration: 15 }] }] },
-  "artillery-mage": { form: true, effects: [] },
+  "artillery-mage": { form: true, effects: [{ type: "weaponForm", group: "core", order: 10, form: "'Artillery Mage'" }] },
   "barbed-flurry": { effects: [{ type: "proc", trigger: "apply:bleed", when: "targetHadStatus",
     attack: { hits: [["1.6 + 0.32 * amount", 1]], types: { Physical: 1 }, scalings: { Physical: 1, Dexterity: 1 }, noAddedTypes: true } }] },
   "barbskin": { effects: [
@@ -118,7 +118,7 @@ window.VOXL_RULES.perks = {
     { type: "addType", damageType: "Water", value: "5 * counter('channeledDepths')", when: "counterFull('channeledDepths') && canProc", noTypeBonus: ["oceans-rage"] },
     { type: "counterReset", trigger: "attack", id: "channeledDepths", when: "counterFull('channeledDepths') && canProc" },
   ] },
-  "channeled-weapon": { effects: [
+  "channeled-weapon": { unscaled: true, effects: [
     { type: "addType", damageType: "Magic", value: "0.05 * amount", when: "!isDot" },
     { type: "cooldown", ability: "art", kind: "reduction", value: "0.2 + 0.05 * amount" },
   ] },
@@ -138,7 +138,7 @@ window.VOXL_RULES.perks = {
   "concealed-edge": { effects: [{ type: "addType", damageType: "Hex", value: "0.25 * amount", when: "inShadow" }] },
   "concussion": { effects: [{ type: "poise", value: "1 + 0.166 * tenacity * amount" }] },
   "contained": { effects: [{ type: "statusDuration", kind: "buff", to: "self", multiplier: "1 + 0.33 * amount" }, { type: "statusDuration", kind: "debuff", to: "self", multiplier: "1 + 0.33 * amount" }] },
-  "cosmic-ray": { form: true, effects: [] },
+  "cosmic-ray": { form: true, effects: [{ type: "weaponForm", slot: "m2", order: 30, form: "'Cosmic Ray'" }] },
   "counting-sheep": { effects: [{ type: "applyStatus", trigger: "finisherHit", status: "slowness", to: "target", potency: "0.5 * amount", duration: 5 }, { type: "poise", value: "1 + 0.1 * amount", when: "hasTarget('slowness')" }] },
   "crimson-tithe": { effects: [
     { type: "heal", trigger: "castEnd", when: "isArt", cooldown: 15, base: "3.2 + 1.6 * amount", scalings: { Physical: 0.7, Air: 0.7 }, target: "both", selfShare: 0.2, label: "Crimson Tithe burst" },
@@ -158,7 +158,7 @@ window.VOXL_RULES.perks = {
     { type: "damage", value: "1 + max(0, 10 * amount - 10 + 5 * targetDebuffs) / 100", when: "targetDebuffs > 0 && canProc && !isDot", order: 2 },
     { type: "lifesteal", stage: "preCrit", fraction: 0.00666, when: "targetDebuffs > 0 && canProc && !isDot" },
   ] },
-  "cursed": { engine: true, effects: [] },
+  "cursed": { unscaled: true, effects: [{ type: "perkScale", value: "1 + 0.1 * amount" }] },
   "cursed-bark": { effects: [
     { type: "applyStatus", trigger: "damaged", to: "target", chance: "blocking ? 0.7 : 1", randomDebuffs: 1, duration: 5 },
     { type: "defense", value: "5 * amount * targetDebuffs" },
@@ -240,8 +240,9 @@ window.VOXL_RULES.perks = {
   "dragon-state": { effects: [{ type: "proc", trigger: "attack", when: "isWeapon && selfHp >= 85 - 5 * amount",
     attack: { hits: [["1.5 + 1.5 * amount", 1]], types: { Magic: 1 }, scalings: { Magic: 0.75, Dexterity: 0.75, Holy: 0.75 }, canProc: true } }] },
   "drone": { effects: [{ type: "minion", shield: "10 * amount * summonScale" }] },
-  "dual-wielding": { form: true, effects: [] },
-  "duelist-stance": { form: true, effects: [] },
+  "dual-wielding": { form: true, effects: [{ type: "weaponForm", group: "stance", order: 1, when: "mode == 'sword' && oneOf(base, 'Dagger', '1-Handed Sword', 'Unbalanced Sword', 'Mallet')",
+    form: "base == 'Dagger' ? 'Dual Daggers' : base == '1-Handed Sword' ? 'Dual Swords' : base == 'Unbalanced Sword' ? 'Dual Unbalanced Swords' : 'Dual Mallets'" }] },
+  "duelist-stance": { form: true, effects: [{ type: "weaponForm", group: "stance", order: 5, when: "mode == 'sword' && base == '1-Handed Sword'", form: "'Rapier'" }] },
   "echo-blast": { effects: [{ type: "proc", trigger: "summon", count: "summonsSpawned", attack: { hits: [["3.5 + 1.5 * amount", 1]], types: { Air: 1 }, scalings: { Air: 1, Summon: 1 }, canProc: true } }] },
   "echo-incineration": { effects: [
     { type: "dotPotency", dot: "burn", value: "amount" },
@@ -471,9 +472,9 @@ window.VOXL_RULES.perks = {
   ] },
   "iron-slayer-spirit": { spirit: true, effects: [] },
   "juggernaut": { effects: [{ type: "damage", value: "1 + 0.0075 * (max(0, -speedBoost) + max(0, -attackSpeed)) * amount" }, { type: "stunResistance", value: "0.00375 * (max(0, -speedBoost) + max(0, -attackSpeed)) * amount" }] },
-  "kama-blades": { form: true, effects: [] },
+  "kama-blades": { form: true, effects: [{ type: "weaponForm", group: "stance", order: 2, when: "mode == 'sword' && oneOf(base, 'Dagger', 'Spear')", form: "base == 'Dagger' ? 'Dual Kamas' : 'Scythe'" }] },
   "kindling": { effects: [{ type: "statusDuration", status: "burn", to: "target", multiplier: 0.2 }, { type: "dotModify", dot: "burn", multiplier: "1 + 0.5 * amount" }] },
-  "lance": { form: true, effects: [] },
+  "lance": { form: true, effects: [{ type: "weaponForm", group: "stance", order: 3, when: "mode == 'sword' && oneOf(base, 'Greatsword', 'Unbalanced Sword')", form: "'Lance'" }] },
   "life-drinker": { effects: [
     { type: "lifesteal", stage: "preType", fraction: "0.0025 * amount", flat: 0.1, when: "isDot" },
     { type: "statusDuration", tag: "dot", to: "target", multiplier: "1 + 0.2 * amount" },
@@ -481,7 +482,10 @@ window.VOXL_RULES.perks = {
   "lifesteal": { unscaled: true, effects: [{ type: "lifesteal", stage: "final", fraction: "0.0025 * amount", flat: 0.1, when: "!isDot && canProc && !noAddedTypes" }] },
   "light-bearer": { effects: [{ type: "heal", trigger: "hit", when: "isWeapon", chance: "min(1, 0.5 * amount)", base: "0.25 + 0.025 * amount", scalings: { Holy: 1 }, target: "both" }] },
   "lithic-veil": { effects: [{ type: "applyStatus", trigger: "heal", when: "healCanProc", status: "lithicVeil", to: "self", potency: "0.1 * amount", duration: 15 }] },
-  "locked-and-loaded": { form: true, effects: [] },
+  "locked-and-loaded": { form: true, effects: [
+    { type: "weaponForm", group: "guns", order: 20, when: "m1 == 'Fists'", form: "amount >= 2 ? 'Rifle' : 'Dual Guns'" },
+    { type: "weaponForm", group: "guns", order: 21, slot: "m2", when: "oneOf(base, 'Dagger', '1-Handed Sword', 'Unbalanced Sword', 'Shield')", form: "amount >= 2 ? 'Shotgun' : 'Side Gun'" },
+  ] },
   "lodestone-barrage": { effects: [{ type: "proc", trigger: "castEnd", when: "isRune",
     attack: { hits: [["2 + 0.75 * amount", "round(1 + baseCooldown / 3 * (1 + 0.2 * amount))"]], types: { Magic: 0.5, Earth: 0.5 }, scalings: { Magic: 0.5, Earth: 0.5, Dexterity: 0.5 }, canProc: true, procCoef: 0.4 } }] },
   "lucky": { order: 4, effects: [
@@ -513,8 +517,8 @@ window.VOXL_RULES.perks = {
     { type: "statusConvert", from: "sticky", to: "stickyMelting" }, { type: "statusConvert", from: "stickyPurple", to: "stickyMelting" },
     { type: "statusConvert", from: "stickyRed", to: "stickyMelting" }, { type: "statusConvert", from: "stickyGreen", to: "stickyMelting" },
   ] },
-  "mine": { form: true, effects: [{ type: "applyStatus", trigger: "attack", when: "isM2 && form == 'Mine'", status: "shatter", to: "target", potency: "0.1 * amount", duration: 10 }] },
-  "minion-absorption": { unscaled: true, effects: [{ type: "applyStatus", trigger: "summon", when: "!hasSelf('minionAbsorbed')", status: "minionAbsorbed", to: "self", potency: "0.002 * summonBoost * amount", duration: "15 * (1 + summonMaxHp / 300)", consumesMinion: true }] },
+  "mine": { form: true, effects: [{ type: "weaponForm", slot: "m2", order: 31, form: "'Mine'" }, { type: "applyStatus", trigger: "attack", when: "isM2 && form == 'Mine'", status: "shatter", to: "target", potency: "0.1 * amount", duration: 10 }] },
+  "minion-absorption": { unscaled: true, effects: [{ type: "applyStatus", trigger: "summon", when: "!hasSelf('minionAbsorbed')", status: "minionAbsorbed", to: "self", potency: "amount * summonBoost / 750", duration: "15 * (1 + summonMaxHp / 300)", consumesMinion: true }] },
   "money-smart": { effects: [{ type: "damage", value: "1 + min(voxos, 100000) / 500000 * amount" }] },
   "mortal-will": { effects: [
     { type: "addType", damageType: "Holy", value: "0.1 * amount", when: "isFinisher", noTypeBonus: ["sunburn", "photosynthesis"] },
@@ -539,7 +543,7 @@ window.VOXL_RULES.perks = {
     { type: "applyStatus", trigger: "hit", when: "selfHp <= 35", chance: 0.5, status: "bleed", to: "target", duration: 5 },
   ] },
   "perfection": { effects: [{ type: "applyStatus", trigger: "start", status: "perfection", to: "self", potency: "min(perfectionStacks, 5 * amount)", duration: 100000, noPotencyBonus: true }] },
-  "perk-effectiveness": { engine: true, effects: [] },
+  "perk-effectiveness": { unscaled: true, effects: [{ type: "perkScale", value: "1 + 0.1 * amount" }] },
   "phalanx-stab": { effects: [
     { type: "proc", trigger: "finisherHit", chance: "finisherProcRate", ignoreProcCoef: true,
       attack: { hits: [["amount / (1 + (finisherHit - 1) / 3)", 1]], types: { Physical: 0.5, Earth: 0.5 }, scalings: { Physical: 1, Earth: 1 }, canProc: true }, applies: [{ status: "bleed", duration: 5, chance: 0.5 }] },
@@ -616,8 +620,8 @@ window.VOXL_RULES.perks = {
   "revel-in-death": { effects: [{ type: "heal", trigger: "minionDeath", base: "0.1 * amount * minionBaseHp", noScaling: true, target: "self" }] },
   "rider": { effects: [{ type: "damage", value: "1 + 0.2 * amount", when: "mounted" }, { type: "stunResistance", value: "0.1 * amount" }] },
   "righted-wrongs": { order: 8, effects: [
-    { type: "stat", stat: "Dexterity Boost", add: "amount * 2 / 21 * (max(0, -warding) + (max(0, -physicalDefense) + max(0, -magicDefense)) * 3 + max(0, -tenacity) * 0.4 + negativeOtherStats * 2)" },
-    { type: "stat", stat: "Speed Boost", add: "0.1 * amount * 2 / 21 * (max(0, -warding) + (max(0, -physicalDefense) + max(0, -magicDefense)) * 3 + max(0, -tenacity) * 0.4 + negativeOtherStats * 2)" },
+    { type: "stat", stat: "Dexterity Boost", add: "0.625 * amount * 2 / 21 * (max(0, -warding) + (max(0, -physicalDefense) + max(0, -magicDefense)) * 3 + max(0, -tenacity) * 0.4 + negativeOtherStats * 2)" },
+    { type: "stat", stat: "Speed Boost", add: "0.625 * 0.1 * amount * 2 / 21 * (max(0, -warding) + (max(0, -physicalDefense) + max(0, -magicDefense)) * 3 + max(0, -tenacity) * 0.4 + negativeOtherStats * 2)" },
   ] },
   "roaring-heads": { order: 4, effects: [
     { type: "stat", stat: "Warding", add: "-50 * amount" },
@@ -655,10 +659,12 @@ window.VOXL_RULES.perks = {
   ] },
   "savage-combo": { effects: [{ type: "damage", value: "1 + 0.15 * amount * min(3, chain)", when: "isWeapon && !noSavageCombo" }] },
   "saw-heart": { form: true, effects: [
+    { type: "weaponForm", group: "stance", order: 0, when: "mode == 'monk' && base == 'Fists'", form: "'Saw Fists'" },
     { type: "applyStatus", trigger: "hit", when: "isWeapon && form == 'Saw Fists'", chance: 0.3, status: "shatter", to: "target", potency: 0.2, duration: 5 },
     { type: "applyStatus", trigger: "hit", when: "isWeapon && form == 'Saw Fists'", chance: 0.3, status: "bleed", to: "target", duration: 5 },
   ] },
   "saw-stance": { form: true, effects: [
+    { type: "weaponForm", group: "stance", order: 4, when: "mode == 'sword' && blade == 'Medium Blade'", form: "'Saw Sword'" },
     { type: "applyStatus", trigger: "hit", when: "isWeapon && form == 'Saw Sword'", chance: 0.3, status: "shatter", to: "target", potency: 0.2, duration: 5 },
     { type: "applyStatus", trigger: "hit", when: "isWeapon && form == 'Saw Sword'", chance: 0.3, status: "bleed", to: "target", duration: 5 },
   ] },
@@ -714,7 +720,7 @@ window.VOXL_RULES.perks = {
   "spell-piercer": { effects: [{ type: "critBonus", value: "1 + 0.2 * amount", when: "isArt || isRune" }, { type: "ignoreDefense", when: "crit && (isArt || isRune)" }] },
   "spell-slinger": { effects: [{ type: "critChance", value: "0.075 * magicBoost * amount" }] },
   "spellshield": { order: 6, effects: [{ type: "stat", stat: "Protection", add: "0.15 * (magicBoost + magicDefense) * amount" }] },
-  "spirit-commune": { engine: true, unscaled: true, effects: [] },
+  "spirit-commune": { unscaled: true, effects: [{ type: "spiritEnergy", value: "1 + (amount - 1) / 6" }] },
   "spirit-winds": { effects: [
     { type: "damage", value: "1 + selfPotency('tailwind') / 3 + 2 / 15 * amount", when: "hasSelf('tailwind')" },
     { type: "convertType", from: "Air", to: "Magic", fraction: "min(1, 0.1 * amount)", when: "hasSelf('tailwind')" },
@@ -772,13 +778,13 @@ window.VOXL_RULES.perks = {
   "stone-weapon": { effects: [{ type: "weaponType", damageType: "Earth", value: "0.3 * amount" }, { type: "attackSpeed", category: "time", value: "1 + 0.07 * amount" }] },
   "stoneskin": { effects: [{ type: "applyStatus", trigger: "cast", when: "isArt", status: "stoneskin", to: "self", potency: "min(0.8, 0.3 * amount)", duration: "castTime + 0.5 * cooldown", noPotencyBonus: true, noDurationBonus: true }] },
   "stored-corruption": { effects: [{ type: "statusDuration", kind: "debuff", multiplier: "1 + 0.1 * amount" }, { type: "damageTaken", value: "1 + 0.05 * amount" }] },
-  "storm-caster": { form: true, effects: [{ type: "echo", stage: "preType", fraction: "1 / 6", count: "1 + min(2, enemies)", types: { Air: 0.5, Magic: 0.5 }, when: "isWeapon && form == 'Storm Caster'", label: "Storm Caster chain" }] },
+  "storm-caster": { form: true, effects: [{ type: "weaponForm", group: "core", order: 12, form: "'Storm Caster'" }, { type: "echo", stage: "preType", fraction: "1 / 6", count: "1 + min(2, enemies)", types: { Air: 0.5, Magic: 0.5 }, when: "isWeapon && form == 'Storm Caster'", label: "Storm Caster chain" }] },
   "storm-rend": { effects: [
     { type: "echo", stage: "preType", fraction: "1 / 3", chance: 0.2, types: { Air: 0.5, Magic: 0.5 }, label: "Storm Rend chain", tag: "stormRend" },
     { type: "applyStatus", trigger: "echo:Storm Rend chain", status: "electricalRend", to: "target", potency: "0.1 * amount", duration: 10 },
   ] },
   "stormcaller": { effects: [{ type: "proc", trigger: "hit", chance: 0.025, attack: { hits: [["20 + 4 * amount", 1]], types: { Air: 0.5, Magic: 0.5 }, scalings: { Air: 1, Magic: 1 }, canProc: true, guardbreak: true } }] },
-  "stratos-winds": { form: true, effects: [] },
+  "stratos-winds": { form: true, effects: [{ type: "weaponForm", group: "core", order: 11, form: "'Stratos Winds'" }] },
   "strong-tides": { order: 1, effects: [{ type: "stat", stat: "Water Boost", add: "physicalBoost * 0.1 * amount" }] },
   "sunburn": { effects: [
     { type: "dotPotency", dot: "burn", value: "amount" },
@@ -799,7 +805,7 @@ window.VOXL_RULES.perks = {
   "tempest": { effects: [{ type: "proc", trigger: "finisherHit", chance: "finisherProcRate", ignoreProcCoef: true,
     attack: { hits: [["(0.8 + 0.2664 * amount) * 0.75 ^ (finisherHit - 1)", 1]], types: { Air: 1 }, scalings: { Air: 1 }, canProc: true, procCoef: "(0.25 + 0.05 * amount) * min(1, procCoef)" } }] },
   "tesla-cannon": { effects: [{ type: "proc", trigger: "hit", when: "rangedHits", cooldown: 7.5,
-    attack: { name: "Tesla Orb", hits: [["2 + 4 * amount", 15]], types: { Magic: 0.5, Air: 0.5 }, scalings: { Magic: 1, Air: 1 }, canProc: true, procCoef: 0.5, spread: 7.5 } }] },
+    attack: { name: "Tesla Orb", hits: [["4 + 2 * amount", 15]], types: { Magic: 0.5, Air: 0.5 }, scalings: { Magic: 1, Air: 1 }, canProc: true, procCoef: 0.5, spread: 7.5 } }] },
   "thief-training": { unscaled: true, effects: [
     { type: "critDamage", value: "-0.5 + 0.1 * amount" },
     { type: "forceCrit", when: "behindTarget && !noThief", bonus: "wouldCrit ? 1.3 : 1.2" },
@@ -881,7 +887,7 @@ window.VOXL_RULES.perks = {
     { type: "typeTaken", types: ["Fire", "Water"], value: 0.1, when: "hasSelf('reinforce')" },
   ] },
   "vassals-croak": { effects: [
-    { type: "damage", value: "1 + 0.02 * summons * amount" },
+    { type: "damage", value: "1 + 0.01 * summons * amount" },
     { type: "counter", id: "lastCroak", max: "15 + perk('swarm')", initial: "lastCroak", noFullTrigger: true },
     { type: "echo", stage: "preType", fraction: "counter('lastCroak') * (1 + amount) / 15", types: { Physical: 1 }, when: "isM2 && counter('lastCroak') > 0", oncePerAttack: true, label: "Last Croak" },
     { type: "applyStatus", trigger: "attack", when: "isM2 && counter('lastCroak') > 0", status: "rage", to: "self", potency: "0.1 + 0.01 * counter('lastCroak') * amount", duration: 10, resetCounter: "lastCroak" },
@@ -902,7 +908,7 @@ window.VOXL_RULES.perks = {
     { type: "applyStatus", trigger: "attack", when: "isWeapon && hitsLanded > 0", chance: "min(1, 0.55 * amount)", status: "bleed", to: "target", duration: 5 },
   ] },
   "vile-presence": { effects: [{ type: "aura", interval: 1, attack: { name: "Vile Presence", hits: [["1.2 * amount", 1]], types: { Hex: 1 }, scalings: { Hex: 1 } } }] },
-  "virulent-core": { form: true, effects: [{ type: "applyStatus", trigger: "hit", when: "isWeapon && form == 'Virulent Core'", status: "poison", to: "target", duration: 5 }] },
+  "virulent-core": { form: true, effects: [{ type: "weaponForm", group: "core", order: 13, form: "'Virulent Core'" }, { type: "applyStatus", trigger: "hit", when: "isWeapon && form == 'Virulent Core'", status: "poison", to: "target", duration: 5 }] },
   "vital-mist": { effects: [{ type: "vitalMist", rate: "2 + 0.5 * amount", max: "50 + 50 * amount", scalings: { Air: 1, Physical: 1 }, tailwind: "0.1 + 0.1 * amount" }] },
   "vital-strikes": { effects: [{ type: "critDamage", value: "0.25 * amount" }] },
   "void-contract": { effects: [

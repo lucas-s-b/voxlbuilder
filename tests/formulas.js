@@ -48,4 +48,15 @@ const context = Engine.newContext(cooldownProfile, { steps: [] }, 1);
 close(combat.abilityCooldown(context, "art", 12, null).final, 12, "cooldown without effects stays 12");
 const caster = Engine.newContext(profileWith({}, { caster: 2 }, {}), { steps: [] }, 1);
 console.log("caster 2 art cooldown 12 ->", combat.abilityCooldown(caster, "art", 12, null));
+// weapon forms and perk scaling come from "weaponForm" and "perkScale" rule effects
+const formOf = (perks) => { const form = window.VoxlModel.weaponForm(build, perks); return form.m1 + " / " + form.m2; };
+const baseForm = window.VoxlModel.weaponForm(build, {}).base;
+assert.strictEqual(baseForm, "1-Handed Sword", "test weapon base form");
+assert.strictEqual(formOf({ "duelist-stance": 1 }), "Rapier / Rapier");
+assert.strictEqual(formOf({ "duelist-stance": 1, "dual-wielding": 1 }), "Dual Swords / Dual Swords");
+assert.strictEqual(formOf({ "saw-heart": 1 }), "1-Handed Sword / 1-Handed Sword");
+assert.strictEqual(formOf({ "locked-and-loaded": 2 }), "1-Handed Sword / Shotgun");
+assert.strictEqual(formOf({ "storm-caster": 1, "cosmic-ray": 1, mine: 1 }), "Storm Caster / Mine");
+close(Engine.perkScale({ "perk-effectiveness": 2, cursed: 1, juggernaut: 3 }), 1.2 * 1.1, "perk scale from rules");
+console.log("ok weapon forms from rules");
 console.log("all formula checks passed");

@@ -13,6 +13,12 @@
     "Heat Resistance"];
   const FLAT_STATS = new Set(["Jump Boost", "Protection", "Tenacity", "Armor Penetration"]);
 
+  // shortcut: patch 1641 only says "specific negative stats" stay when forged, these lists are a guess; fix once the wiki lists them.
+  const FORGE_KEEPS_NEGATIVE = {
+    Prisoner: ["Hex Boost", "Speed Boost", "Air Defense", "Magic Defense"],
+    "Steel Legion": ["Speed Boost", "Attack Speed"],
+  };
+
   const SLOTS = ["head", "ring", "chest", "rune", "legs"];
   const INFUSABLE = ["head", "chest", "legs", "ring"];
   const SLOT_NAMES = { head: "Helmet", chest: "Chestplate", legs: "Leggings", ring: "Ring", rune: "Rune" };
@@ -55,7 +61,8 @@
       const base = item.stats[stat] || 0;
       const sm = m.stats[stat] || { multiplier: 1, flat: 0 };
       let v = base * sm.multiplier * m.cat[category(stat, base)];
-      v = v > 0 ? v * u : v / u;
+      const keepsNegative = (FORGE_KEEPS_NEGATIVE[item.set] || []).includes(stat);
+      v = v > 0 ? v * u : keepsNegative ? v : v / u;
       v += sm.flat;
       v = round(v);
       if (v !== 0) out[stat] = v;
@@ -107,12 +114,10 @@
     return { stats, perks };
   }
 
-  // Perk Effectiveness and Cursed raise most perk amounts by 10% each per perk (multiplicatively),
+  // "perkScale" effects in the rules (Perk Effectiveness, Cursed) raise most perk amounts,
   // except the perks the rules mark as unscaled and anything granted by enchants.
   function scalePerkAmounts(perks) {
-    const effectiveness = perks["perk-effectiveness"] ? perks["perk-effectiveness"].amount : 0;
-    const cursed = perks.cursed ? perks.cursed.amount : 0;
-    const multiplier = (1 + 0.1 * effectiveness) * (1 + 0.1 * cursed);
+    const multiplier = window.VoxlEngine.perkScale(Object.fromEntries(Object.values(perks).map((perk) => [perk.id, perk.amount])));
     if (multiplier === 1) return;
     Object.values(perks).forEach((perk) => {
       if (window.VoxlEngine.isUnscaled(perk.id)) return;

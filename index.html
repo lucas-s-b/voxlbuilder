@@ -22,23 +22,23 @@
 
   <main class="inv">
     <section class="panel sand main-panel">
+     <div class="buildbar">
+      <div class="loadouts" id="loadouts" role="group" aria-label="Loadouts"></div>
+      <div class="build-identity">
+       <button class="pname outline" id="buildNameBtn" title="Rename build">My Build</button>
+       <div class="lv outline">LV: <span id="charLevelLabel">80</span></div>
+       <div class="char-badges" id="charBadges"></div>
+      </div>
+      <button class="txtbtn red outline" id="shareBtn">SHARE BUILD</button>
+     </div>
      <div class="view-inv" id="view-inv">
       <div class="char-col">
-        <div class="who">
-          <button class="pname outline" id="buildNameBtn" title="Rename build">My Build</button>
-          <div class="lv outline">LV: <span id="charLevelLabel">80</span></div>
-          <div class="char-badges" id="charBadges"></div>
-        </div>
         <div class="crosses">
           <div class="cross" id="cross"></div>
           <div class="inf-cross-wrap">
             <div class="inf-label outline">INFUSIONS</div>
             <div class="cross inf-cross" id="infusions"></div>
           </div>
-        </div>
-        <div class="loadouts" id="loadouts"></div>
-        <div class="char-actions">
-          <button class="txtbtn red outline" id="shareBtn">SHARE BUILD</button>
         </div>
       </div>
 
@@ -67,6 +67,7 @@
     </section>
 
     <aside class="right-col">
+      <nav class="sidetabs" id="sidetabs" aria-label="Panels"></nav>
       <div class="panel stat-panel">
         <div class="stat-scroll" id="rightBody"></div>
       </div>
@@ -74,8 +75,6 @@
         <div class="desc-scroll" id="desc"></div>
       </div>
     </aside>
-
-    <nav class="sidetabs" id="sidetabs" aria-label="Panels"></nav>
   </main>
 
   <footer class="credits outline">

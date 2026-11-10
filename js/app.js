@@ -470,7 +470,7 @@
   function renderSidetabs() {
     const tabs = [["stats", "Statistics"], ["perks", "Perks"], ["build", "Build & share"]];
     $("sidetabs").innerHTML = tabs.map(([k, label]) =>
-      `<button class="sidetab${ui.tab === k ? " active" : ""}" data-tab="${k}" title="${label}" aria-label="${label}">${TAB_ICONS[k]}</button>`).join("");
+      `<button class="sidetab${ui.tab === k ? " active" : ""}" data-tab="${k}" aria-pressed="${ui.tab === k}">${TAB_ICONS[k]}<span>${label}</span></button>`).join("");
   }
 
   function renderRight() {

@@ -88,7 +88,7 @@ a { color: #8fd3ff; }
 
 .inv {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px 52px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   gap: 0 8px;
   max-width: 1480px;
   margin: 18px auto 0;
@@ -255,7 +255,6 @@ a { color: #8fd3ff; }
 
 /* ---------------------------------------------------------------- character column */
 .char-col { display: flex; flex-direction: column; align-items: center; }
-.who { text-align: center; margin-bottom: 8px; }
 .pname {
   background: none; border: 0; padding: 2px 6px;
   font-family: var(--pixel); font-size: 14px; color: #6dff9a;
@@ -344,7 +343,6 @@ a { color: #8fd3ff; }
 .loadout.active { color: var(--green); box-shadow: inset 0 0 0 2px #d6ffd6; }
 .loadout:hover { filter: brightness(1.15); }
 
-.char-actions { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
 
 .txtbtn {
   background: none; border: 0; padding: 4px 6px;
@@ -520,16 +518,17 @@ a { color: #8fd3ff; }
 .d-hint { color: #efe3cc; font-size: 14px; }
 
 /* ---------------------------------------------------------------- side tabs */
-.sidetabs { display: flex; flex-direction: column; gap: 6px; }
+.sidetabs { display: flex; gap: 4px; margin-bottom: 6px; }
 .sidetab {
-  width: 48px; height: 48px; padding: 6px;
+  flex: 1; min-width: 0; min-height: 44px; padding: 4px 6px;
   border: 2px solid #1b1108;
   background: #8c6a40 var(--sand-tex);
   background-size: 96px;
   box-shadow: inset 0 0 0 2px #5a4128;
-  display: grid; place-items: center;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-family: var(--body); font-size: 15px; font-weight: 700; color: #1a1008;
 }
-.sidetab svg { width: 30px; height: 30px; }
+.sidetab svg { width: 22px; height: 22px; flex: none; }
 .sidetab.active { background-color: #e0c48c; box-shadow: inset 0 0 0 2px #fff; }
 .sidetab:hover { filter: brightness(1.12); }
 
@@ -582,16 +581,15 @@ a { color: #8fd3ff; }
 
 /* ---------------------------------------------------------------- responsive */
 @media (max-width: 1180px) {
-  .inv { grid-template-columns: minmax(0, 1fr) 52px; }
+  .inv { grid-template-columns: minmax(0, 1fr); }
   .right-col { grid-column: 1; grid-row: 2; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
   .desc-panel { margin-top: 0; height: 450px; }
-  .sidetabs { grid-column: 2; grid-row: 1; }
+  .sidetabs { grid-column: 1 / -1; margin-bottom: 0; }
 }
 
 @media (max-width: 820px) {
   .inv { grid-template-columns: minmax(0, 1fr); }
-  .sidetabs { grid-column: 1; grid-row: 2; flex-direction: row; justify-content: flex-end; margin-top: 8px; }
-  .right-col { grid-row: 3; grid-template-columns: 1fr; }
+  .right-col { grid-template-columns: minmax(0, 1fr); }
   .main-panel { min-height: 0; }
   .view-inv, .cv-grid, .tv-grid { grid-template-columns: minmax(0, 1fr); }
   .view-inv { flex-direction: column; }
@@ -1023,3 +1021,38 @@ a { color: #8fd3ff; }
 .seq-extra { grid-column: 3 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding-top: 4px; border-top: 1px solid #ffffff1f; font-size: 12.5px; font-weight: 600; }
 .seq-extra span { color: var(--light-ink-2); overflow-wrap: anywhere; }
 .seq-extra b { color: #ffc27a; text-align: right; }
+
+/* ---------------------------------------------------------------- build bar (every tab) */
+.buildbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px;
+  padding-bottom: 10px; margin-bottom: 12px;
+  border-bottom: 3px solid var(--sand-line);
+}
+.buildbar .loadouts { margin: 0; gap: 6px; }
+.build-identity { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; }
+.buildbar .pname { max-width: min(300px, 100%); }
+.buildbar .lv, .buildbar .char-badges { margin-top: 0; }
+.buildbar .char-badges { justify-content: flex-start; }
+
+/* the slot crosses stay in one narrow column so the item list gets the width */
+.view-inv > .char-col { flex: 0 0 auto; min-width: 0; }
+.crosses { flex-direction: column; margin: 8px 0 0; }
+.inv, .main-panel, .right-col { min-width: 0; }
+
+/* desktop: stats stay on screen while the page scrolls, stats and item list use the window height */
+@media (min-width: 1181px) {
+  .right-col { position: sticky; top: 8px; height: calc(100vh - 16px); min-height: 480px; }
+  .stat-panel { flex: 1; height: auto; min-height: 0; }
+  .desc-panel { flex: 0 0 36%; height: auto; min-height: 0; }
+  .grid { max-height: none; height: calc(100vh - 470px); }
+}
+@media (max-width: 820px) {
+  .buildbar { justify-content: center; }
+  .build-identity { flex-basis: 100%; justify-content: center; order: 1; }
+  .view-inv > .char-col { align-self: center; }
+}
+/* small screens: both slot crosses side by side, shrunk, so the item list starts on the first screen */
+@media (max-width: 820px) { .crosses { flex-direction: row; flex-wrap: nowrap; gap: 16px; margin-top: 22px; } }
+@media (max-width: 660px) { .crosses { zoom: 0.75; } }
+@media (max-width: 500px) { .crosses { zoom: 0.5; } }
+@media (max-width: 350px) { .crosses { zoom: 0.44; } }

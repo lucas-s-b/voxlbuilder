@@ -81,7 +81,7 @@ window.VOXL_RULES.core = {
     luminescent: { name: "Luminescent", kind: "buff", onSelf: [{ type: "echo", stage: "preType", fraction: "0.5 * potency", types: { Holy: 1 }, when: "canProc", label: "Luminescent" }] },
     rotted: { name: "Rotted", kind: "buff", onSelf: [{ type: "applyStatus", trigger: "hit", status: "poison", to: "target", duration: 5, when: "canProc" }] },
     queensPower: { name: "Queens Power", kind: "buff", onSelf: [
-      { type: "attackSpeed", category: "perk", value: "20 + 100 * potency" },
+      { type: "attackSpeed", category: "perk", value: "5 + 100 * potency" },
       { type: "damage", value: "1 + 2 * potency * summonBoost / 100", when: "isWeapon" },
     ] },
     convertedEnergy: { name: "Converted Energy", kind: "buff", onSelf: [{ type: "damage", value: "1 + potency" }] },

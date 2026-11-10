@@ -263,7 +263,7 @@
     const definition = context.profile.rules.core.statuses[statusId] || {};
     if (effect.to && effect.to !== side) return false;
     if (effect.except && effect.except.includes(statusId)) return false;
-    if (effect.status) return effect.status === statusId || (statusId === "whirlwind" && effect.status === "tailwind");
+    if (effect.status) return effect.status === statusId || (definition.tags || []).includes(effect.status);
     if (effect.tag) return (definition.tags || []).includes(effect.tag);
     if (effect.kind) return definition.kind === effect.kind;
     return true;
@@ -346,7 +346,7 @@
       (context.profile.effects.countsAsApply || []).filter((entry) => entry.effect.from === statusId).forEach((entry) => {
         fireTrigger(context, "apply:" + entry.effect.as, Object.assign(Object.create(context.variables), { appliedPotency: entry.effect.potency || 0, targetHadStatus: false }));
       });
-      if (statusId === "bleed") autoSpirit(context, "applyBleed");
+      autoSpirit(context, "apply:" + statusId);
     } else {
       fireTrigger(context, "gain:" + statusId, triggerVariables);
       if (isDebuff) fireTrigger(context, "gainDebuff", triggerVariables);
@@ -1437,15 +1437,15 @@
   }
 
   function gainEnergy(context, attack) {
-    const commune = context.profile.perks["spirit-commune"] || 0;
     const spirit = context.spirit;
-    if (!commune || !spirit || context.energyBlockedUntil > context.time) return;
+    if (!spirit || context.energyBlockedUntil > context.time) return;
+    const gain = passing(context, "spiritEnergy", context.variables).reduce((product, entry) => product * number(entry.effect.value, entry.scope, 1), 1);
     const formRule = attack.isM1 ? context.profile.form.m1Rule : context.profile.form.m2Rule;
     const coefficients = (formRule && formRule.spirit) || context.profile.rules.attacks.defaultSpiritCoefficients;
     const perAttack = attack.spiritPerHit ? attack.spiritPerHit * attack.hitsLanded : attack.isM2 ? coefficients.m2 : attack.isM1 ? (attack.finisher ? coefficients.finisher : coefficients.m1) : attack.spiritCoefficient || 0;
     if (!perAttack) return;
     const speed = attack.spiritPerHit || attack.spiritCoefficient ? 1 : attackSpeed(context, attack, "weapon").multiplier;
-    context.energy = Math.min(context.energyMax, context.energy + spirit.rule.coefficient * perAttack * (1 + (commune - 1) / 6) / speed);
+    context.energy = Math.min(context.energyMax, context.energy + spirit.rule.coefficient * perAttack * gain / speed);
   }
 
   function spiritAttack(context, spirit) {

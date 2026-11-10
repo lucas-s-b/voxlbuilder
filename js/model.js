@@ -25,13 +25,8 @@
 
   // Race passives that change numbers the builder tracks.
   const RACE_EFFECTS = {
-    human: { lowHpDamage: 0.2 },
-    "half-ork": { armorPen: 10 },
-    elf: { runeCdMult: 0.6 },
-    "dark-elf": {},
     "dragon-blooded": { stats: { Warding: 50, Protection: 10, "Heat Resistance": 100, "Cold Resistance": 100 } },
-    ork: { stats: { Tenacity: 0.2 }, artArmorPen: 10 },
-    "high-elf": { artCdMult: 0.75 },
+    ork: { stats: { Tenacity: 0.2 } },
     arborian: { stats: { "Fire Defense": -50, Protection: 15 } },
     kitsune: { stats: { "Jump Boost": 2, "Speed Boost": 10 }, weaponSpeed: 0.1 },
     bunikin: { stats: { "Jump Boost": 5 } },
@@ -80,55 +75,33 @@
     "Rifle": { m1: [[[5, 1]], [[5, 1]], [[18, 1]]], m2: [[17, 1]], note: "Rifle M2: 17 tapped, up to 45.3 held (Charged M2)" },
   };
 
-  const DUAL_BY_BLADE = { "Small Blade": "Dual Daggers", "Medium Blade": "Dual Swords", "Heavy Blade": "Dual Unbalanced Swords", "Hammer Head": "Dual Mallets" };
-  const ONE_HANDED = ["Dagger", "1-Handed Sword", "Unbalanced Sword", "Mallet"];
-  const GUN_HOLDERS = ["Dagger", "1-Handed Sword", "Unbalanced Sword", "Shield"];
-  // Perks that replace both LMB and RMB, or only RMB.
-  const CORE_FORMS = [["artillery-mage", "Artillery Mage"], ["stratos-winds", "Stratos Winds"], ["storm-caster", "Storm Caster"], ["virulent-core", "Virulent Core"]];
-
-  // Final weapon form after stance perks, cores and the Blaster Ring: which M1 and M2 the build uses.
+  // Inside a "weaponForm" group only the first effect whose condition passes applies.
   function weaponForm(build, perks) {
     const w = build.weapon || emptyWeapon();
     const parts = partsOf(w);
-    const has = (id) => (perks[id] || 0) > 0;
     const notes = [];
     let base = weaponTypeName(w, parts.filter(Boolean));
     if (base === "None" || base === "Incomplete" || base === "Unknown") {
       notes.push("No complete weapon — using 1-Handed Sword moves.");
       base = "1-Handed Sword";
     }
-    const blade = w.mode === "sword" && parts[1] ? parts[1].partType : null;
+    const blade = w.mode === "sword" && parts[1] ? parts[1].partType : "";
     let m1 = base, m2 = base;
-    const set = (form, why) => { m1 = form; m2 = form; notes.push(`${form} (${why})`); };
-
-    if (w.mode === "monk") {
-      if (base === "Fists" && has("saw-heart")) set("Saw Fists", "Saw Heart");
-    } else if (has("dual-wielding") && ONE_HANDED.includes(base) && DUAL_BY_BLADE[blade]) {
-      set(DUAL_BY_BLADE[blade], "Dual Wielding");
-    } else if (has("kama-blades") && (base === "Dagger" || base === "Spear")) {
-      set(base === "Dagger" ? "Dual Kamas" : "Scythe", "Kama Blades");
-    } else if (has("lance") && (base === "Greatsword" || base === "Unbalanced Sword")) {
-      set("Lance", "Lance");
-    } else if (has("saw-stance") && blade === "Medium Blade") {
-      set("Saw Sword", "Saw Stance");
-    } else if (has("duelist-stance") && base === "1-Handed Sword") {
-      set("Rapier", "Duelist Stance");
-    }
-    const core = CORE_FORMS.find(([id]) => has(id));
-    if (core) set(core[1], core[1] + " perk");
-
-    // Blaster Ring (Locked And Loaded): a second Blaster Ring infused upgrades the guns.
-    const guns = perks["locked-and-loaded"] || 0;
-    if (guns && m1 === "Fists") {
-      const form = guns >= 2 ? "Rifle" : "Dual Guns";
-      m1 = form; m2 = form;
-      notes.push(`${form} (Locked And Loaded${guns >= 2 ? " ×2" : ""})`);
-    } else if (guns && GUN_HOLDERS.includes(base)) {
-      m2 = guns >= 2 ? "Shotgun" : "Side Gun";
-      notes.push(`M2 → ${m2} (Locked And Loaded${guns >= 2 ? " ×2" : ""})`);
-    }
-    if (has("cosmic-ray")) { m2 = "Cosmic Ray"; notes.push("M2 → Cosmic Ray"); }
-    if (has("mine")) { m2 = "Mine"; notes.push("M2 → Mine (overrides other RMBs)"); }
+    const usedGroups = new Set();
+    const Engine = window.VoxlEngine;
+    Engine.buildEffects(perks, "weaponForm").forEach(({ id, amount, effect }) => {
+      if (effect.group && usedGroups.has(effect.group)) return;
+      const scope = { variables: { base, blade, mode: w.mode, m1, m2, amount }, functions: Engine.MATH_FUNCTIONS };
+      const evaluate = (formula) => window.VoxlExpression.compile(formula)(scope);
+      if (effect.when !== undefined && !window.VoxlExpression.truthy(evaluate(effect.when))) return;
+      const form = evaluate(effect.form);
+      if (!MOVES[form]) return;
+      if (effect.group) usedGroups.add(effect.group);
+      if (effect.slot !== "m2") m1 = form;
+      m2 = form;
+      const perkName = (D.perks[id] || {}).name || id;
+      notes.push((effect.slot === "m2" ? "M2 → " : "") + form + (perkName === form ? "" : ` (${perkName})`));
+    });
 
     // Forms without their own M1 keep the base weapon's.
     const m1Moves = (MOVES[m1] && MOVES[m1].m1) || MOVES[base].m1;

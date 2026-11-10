@@ -41,11 +41,22 @@
     return stats;
   }
 
-  const UNSCALED_DEFAULT = ["cursed", "perk-effectiveness", "luminescent-fervor", "valor", "spirit-commune", "channeled-weapon", "quickcast", "thief-training", "vampire"];
   const isUnscaled = (id) => {
     const rule = window.VoxlRules.current().perks[id];
-    return rule ? !!rule.unscaled || ["cursed", "perk-effectiveness", "channeled-weapon"].includes(id) : UNSCALED_DEFAULT.includes(id);
+    return !!(rule && rule.unscaled);
   };
+
+  const BUILD_EFFECTS = ["stat", "grantPerk", "perkScale", "weaponForm"];
+  const buildEffects = (perkAmounts, type) => {
+    const rules = window.VoxlRules.current();
+    return Object.entries(perkAmounts)
+      .filter(([id, amount]) => amount && rules.perks[id])
+      .flatMap(([id, amount]) => rules.perks[id].effects.filter((effect) => effect.type === type).map((effect) => ({ id, amount, effect })))
+      .sort((a, b) => (a.effect.order || 0) - (b.effect.order || 0));
+  };
+
+  const perkScale = (perkAmounts) => buildEffects(perkAmounts, "perkScale")
+    .reduce((product, entry) => product * +Expression.compile(entry.effect.value)({ variables: { amount: entry.amount }, functions: MATH_FUNCTIONS }), 1);
 
   function conditionValues(settings) {
     const rules = window.VoxlRules.current();
@@ -95,7 +106,7 @@
       const rule = rules.perks[id];
       if (!rule) return;
       rule.effects.forEach((effect, index) => {
-        if (effect.type === "stat" || effect.type === "grantPerk") return;
+        if (BUILD_EFFECTS.includes(effect.type)) return;
         (byType[effect.type] = byType[effect.type] || []).push({ sourceKind: "perk", sourceId: id, amount, effect, key: `${id}#${index}`, ownScope: readsVariable(effect, "amount") });
       });
     });
@@ -183,7 +194,7 @@
 
   window.VoxlEngine = window.VoxlEngine || {};
   Object.assign(window.VoxlEngine, {
-    camel, STAT_NAMES, OFFENSIVE_BOOSTS, MATH_FUNCTIONS, statVariables, applyStatEffects, isUnscaled, conditionValues,
+    camel, STAT_NAMES, OFFENSIVE_BOOSTS, MATH_FUNCTIONS, statVariables, applyStatEffects, isUnscaled, perkScale, buildEffects, conditionValues,
     activePerks, indexEffects, indexTriggers, buildProfile, weaponTypes, highestType,
   });
 })();

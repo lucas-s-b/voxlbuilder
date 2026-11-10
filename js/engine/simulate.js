@@ -34,7 +34,7 @@
     const spirits = profile.rules.attacks.spirits;
     const owned = Object.keys(spirits).filter((id) => profile.perks[id]);
     const chosen = owned.includes(profile.settings.special) ? profile.settings.special : owned[0];
-    context.spirit = chosen && profile.perks["spirit-commune"] ? { id: chosen, rule: spirits[chosen] } : null;
+    context.spirit = chosen && profile.effects.spiritEnergy ? { id: chosen, rule: spirits[chosen] } : null;
     return context;
   }
 
